@@ -15,7 +15,7 @@
 
 <div class="node">
   <a name="main.py"></a>
-  <a target="code" href="///C:/Users/Lucas.Vela/Desktop/Programacion/FaltanteAlCambio/main.py" type="text/plain"><tt>main.py</tt></a>
+  <a target="code" href="///C:/Users/Lucas.Vela/Desktop/Programacion/FaltanteAlCambioTablero/main.py" type="text/plain"><tt>main.py</tt></a>
 <span class="moduletype">Script</span>  <div class="import">
 imports:
     <a href="#_collections_abc">_collections_abc</a>
@@ -166,7 +166,7 @@ imports:
  &#8226;   <a href="#re._constants">re._constants</a>
  &#8226;   <a href="#re._parser">re._parser</a>
  &#8226;   <a href="#reprlib">reprlib</a>
- &#8226;   <a href="#src.ui.ventana_info">src.ui.ventana_info</a>
+ &#8226;   <a href="#src.ui.tablero">src.ui.tablero</a>
  &#8226;   <a href="#sre_compile">sre_compile</a>
  &#8226;   <a href="#sre_constants">sre_constants</a>
  &#8226;   <a href="#sre_parse">sre_parse</a>
@@ -6541,6 +6541,7 @@ imported by:
  &#8226;   <a href="#reprlib">reprlib</a>
  &#8226;   <a href="#statistics">statistics</a>
  &#8226;   <a href="#threading">threading</a>
+ &#8226;   <a href="#tkinter.font">tkinter.font</a>
  &#8226;   <a href="#tokenize">tokenize</a>
  &#8226;   <a href="#traceback">traceback</a>
  &#8226;   <a href="#urllib3.util.retry">urllib3.util.retry</a>
@@ -6581,8 +6582,8 @@ imported by:
  &#8226;   <a href="#json.encoder">json.encoder</a>
  &#8226;   <a href="#json.scanner">json.scanner</a>
  &#8226;   <a href="#requests.compat">requests.compat</a>
+ &#8226;   <a href="#src.read_config">src.read_config</a>
  &#8226;   <a href="#src.services.mes">src.services.mes</a>
- &#8226;   <a href="#src.tools.read_config">src.tools.read_config</a>
  &#8226;   <a href="#urllib3._request_methods">urllib3._request_methods</a>
  &#8226;   <a href="#urllib3.contrib.emscripten.fetch">urllib3.contrib.emscripten.fetch</a>
  &#8226;   <a href="#urllib3.contrib.emscripten.response">urllib3.contrib.emscripten.response</a>
@@ -8201,11 +8202,11 @@ imported by:
 
 <div class="node">
   <a name="src"></a>
-  <a target="code" href="///C:/Users/Lucas.Vela/Desktop/Programacion/FaltanteAlCambio/src/__init__.py" type="text/plain"><tt>src</tt></a>
+  <a target="code" href="///C:/Users/Lucas.Vela/Desktop/Programacion/FaltanteAlCambioTablero/src/__init__.py" type="text/plain"><tt>src</tt></a>
 <span class="moduletype">Package</span>  <div class="import">
 imported by:
-    <a href="#src.services">src.services</a>
- &#8226;   <a href="#src.tools">src.tools</a>
+    <a href="#src.read_config">src.read_config</a>
+ &#8226;   <a href="#src.services">src.services</a>
  &#8226;   <a href="#src.ui">src.ui</a>
 
   </div>
@@ -8213,9 +8214,27 @@ imported by:
 </div>
 
 <div class="node">
+  <a name="src.read_config"></a>
+  <a target="code" href="///C:/Users/Lucas.Vela/Desktop/Programacion/FaltanteAlCambioTablero/src/read_config.py" type="text/plain"><tt>src.read_config</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#json">json</a>
+ &#8226;   <a href="#src">src</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#src.services.mes">src.services.mes</a>
+ &#8226;   <a href="#src.ui.tablero">src.ui.tablero</a>
+
+  </div>
+
+</div>
+
+<div class="node">
   <a name="src.services"></a>
-  <a target="code" href="-" type="text/plain"><tt>src.services</tt></a>
-<span class="moduletype">NamespacePackage</span>  <div class="import">
+  <a target="code" href="///C:/Users/Lucas.Vela/Desktop/Programacion/FaltanteAlCambioTablero/src/services/__init__.py" type="text/plain"><tt>src.services</tt></a>
+<span class="moduletype">Package</span>  <div class="import">
 imports:
     <a href="#src">src</a>
 
@@ -8230,53 +8249,19 @@ imported by:
 
 <div class="node">
   <a name="src.services.mes"></a>
-  <a target="code" href="///C:/Users/Lucas.Vela/Desktop/Programacion/FaltanteAlCambio/src/services/mes.py" type="text/plain"><tt>src.services.mes</tt></a>
+  <a target="code" href="///C:/Users/Lucas.Vela/Desktop/Programacion/FaltanteAlCambioTablero/src/services/mes.py" type="text/plain"><tt>src.services.mes</tt></a>
 <span class="moduletype">SourceModule</span>  <div class="import">
 imports:
     <a href="#datetime">datetime</a>
  &#8226;   <a href="#json">json</a>
  &#8226;   <a href="#requests">requests</a>
+ &#8226;   <a href="#src.read_config">src.read_config</a>
  &#8226;   <a href="#src.services">src.services</a>
- &#8226;   <a href="#src.tools.read_config">src.tools.read_config</a>
 
   </div>
   <div class="import">
 imported by:
-    <a href="#src.ui.ventana_info">src.ui.ventana_info</a>
-
-  </div>
-
-</div>
-
-<div class="node">
-  <a name="src.tools"></a>
-  <a target="code" href="-" type="text/plain"><tt>src.tools</tt></a>
-<span class="moduletype">NamespacePackage</span>  <div class="import">
-imports:
-    <a href="#src">src</a>
-
-  </div>
-  <div class="import">
-imported by:
-    <a href="#src.tools.read_config">src.tools.read_config</a>
-
-  </div>
-
-</div>
-
-<div class="node">
-  <a name="src.tools.read_config"></a>
-  <a target="code" href="///C:/Users/Lucas.Vela/Desktop/Programacion/FaltanteAlCambio/src/tools/read_config.py" type="text/plain"><tt>src.tools.read_config</tt></a>
-<span class="moduletype">SourceModule</span>  <div class="import">
-imports:
-    <a href="#json">json</a>
- &#8226;   <a href="#src.tools">src.tools</a>
-
-  </div>
-  <div class="import">
-imported by:
-    <a href="#src.services.mes">src.services.mes</a>
- &#8226;   <a href="#src.ui.ventana_info">src.ui.ventana_info</a>
+    <a href="#src.ui.tablero">src.ui.tablero</a>
 
   </div>
 
@@ -8284,7 +8269,7 @@ imported by:
 
 <div class="node">
   <a name="src.ui"></a>
-  <a target="code" href="///C:/Users/Lucas.Vela/Desktop/Programacion/FaltanteAlCambio/src/ui/__init__.py" type="text/plain"><tt>src.ui</tt></a>
+  <a target="code" href="///C:/Users/Lucas.Vela/Desktop/Programacion/FaltanteAlCambioTablero/src/ui/__init__.py" type="text/plain"><tt>src.ui</tt></a>
 <span class="moduletype">Package</span>  <div class="import">
 imports:
     <a href="#src">src</a>
@@ -8292,21 +8277,24 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#src.ui.ventana_info">src.ui.ventana_info</a>
+    <a href="#src.ui.tablero">src.ui.tablero</a>
 
   </div>
 
 </div>
 
 <div class="node">
-  <a name="src.ui.ventana_info"></a>
-  <a target="code" href="///C:/Users/Lucas.Vela/Desktop/Programacion/FaltanteAlCambio/src/ui/ventana_info.py" type="text/plain"><tt>src.ui.ventana_info</tt></a>
+  <a name="src.ui.tablero"></a>
+  <a target="code" href="///C:/Users/Lucas.Vela/Desktop/Programacion/FaltanteAlCambioTablero/src/ui/tablero.py" type="text/plain"><tt>src.ui.tablero</tt></a>
 <span class="moduletype">SourceModule</span>  <div class="import">
 imports:
-    <a href="#src.services.mes">src.services.mes</a>
- &#8226;   <a href="#src.tools.read_config">src.tools.read_config</a>
+    <a href="#src.read_config">src.read_config</a>
+ &#8226;   <a href="#src.services.mes">src.services.mes</a>
  &#8226;   <a href="#src.ui">src.ui</a>
+ &#8226;   <a href="#threading">threading</a>
+ &#8226;   <a href="#time">time</a>
  &#8226;   <a href="#tkinter">tkinter</a>
+ &#8226;   <a href="#tkinter.font">tkinter.font</a>
  &#8226;   <a href="#tkinter.ttk">tkinter.ttk</a>
 
   </div>
@@ -8772,6 +8760,7 @@ imported by:
  &#8226;   <a href="#queue">queue</a>
  &#8226;   <a href="#requests.auth">requests.auth</a>
  &#8226;   <a href="#requests.cookies">requests.cookies</a>
+ &#8226;   <a href="#src.ui.tablero">src.ui.tablero</a>
  &#8226;   <a href="#subprocess">subprocess</a>
  &#8226;   <a href="#urllib3._collections">urllib3._collections</a>
  &#8226;   <a href="#urllib3.connection">urllib3.connection</a>
@@ -8809,6 +8798,7 @@ imported by:
  &#8226;   <a href="#requests.auth">requests.auth</a>
  &#8226;   <a href="#requests.cookies">requests.cookies</a>
  &#8226;   <a href="#requests.sessions">requests.sessions</a>
+ &#8226;   <a href="#src.ui.tablero">src.ui.tablero</a>
  &#8226;   <a href="#ssl">ssl</a>
  &#8226;   <a href="#subprocess">subprocess</a>
  &#8226;   <a href="#tarfile">tarfile</a>
@@ -8834,6 +8824,7 @@ imports:
  &#8226;   <a href="#re">re</a>
  &#8226;   <a href="#sys">sys</a>
  &#8226;   <a href="#tkinter.constants">tkinter.constants</a>
+ &#8226;   <a href="#tkinter.font">tkinter.font</a>
  &#8226;   <a href="#tkinter.ttk">tkinter.ttk</a>
  &#8226;   <a href="#traceback">traceback</a>
  &#8226;   <a href="#types">types</a>
@@ -8841,8 +8832,9 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#src.ui.ventana_info">src.ui.ventana_info</a>
+    <a href="#src.ui.tablero">src.ui.tablero</a>
  &#8226;   <a href="#tkinter.constants">tkinter.constants</a>
+ &#8226;   <a href="#tkinter.font">tkinter.font</a>
  &#8226;   <a href="#tkinter.ttk">tkinter.ttk</a>
 
   </div>
@@ -8866,6 +8858,24 @@ imported by:
 </div>
 
 <div class="node">
+  <a name="tkinter.font"></a>
+  <a target="code" href="///C:/Users/Lucas.Vela/AppData/Local/Programs/Python/Python313/Lib/tkinter/font.py" type="text/plain"><tt>tkinter.font</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#itertools">itertools</a>
+ &#8226;   <a href="#tkinter">tkinter</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#src.ui.tablero">src.ui.tablero</a>
+ &#8226;   <a href="#tkinter">tkinter</a>
+
+  </div>
+
+</div>
+
+<div class="node">
   <a name="tkinter.ttk"></a>
   <a target="code" href="///C:/Users/Lucas.Vela/AppData/Local/Programs/Python/Python313/Lib/tkinter/ttk.py" type="text/plain"><tt>tkinter.ttk</tt></a>
 <span class="moduletype">SourceModule</span>  <div class="import">
@@ -8875,7 +8885,7 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#src.ui.ventana_info">src.ui.ventana_info</a>
+    <a href="#src.ui.tablero">src.ui.tablero</a>
  &#8226;   <a href="#tkinter">tkinter</a>
 
   </div>

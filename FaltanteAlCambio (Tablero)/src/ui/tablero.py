@@ -4,6 +4,7 @@ from tkinter import font
 from src.services.mes import login_jmmes, get_product_id, get_line_id, get_produced_quantity
 from src.read_config import read_config
 import threading
+import time
 
 class VentanaInfo(tk.Tk):
     def __init__(self):
@@ -11,13 +12,15 @@ class VentanaInfo(tk.Tk):
 
         self.title("Tablero de Faltantes")
         self.geometry("550x460+20+20")
-        self.attributes("-topmost", True)
+        self.attributes("-topmost", True) # Mantener la ventana siempre en primer plano
         self.resizable(True, True)
         self.configure(bg="black")
         self.current_scale = 1.0
 
         self.bind("<ButtonPress-1>", self.start_move)
         self.bind("<B1-Motion>", self.do_move)
+        
+    
 
         # Escuchamos el resize
         self.bind("<Configure>", self.on_resize)
@@ -42,7 +45,10 @@ class VentanaInfo(tk.Tk):
         self.textos_modelos = {}  # Guardamos los textos de los modelos actuales
 
         self.construir_interfaz()
-        self.actualizar_datos()
+
+        # Ejecutamos la actualización de datos en un hilo
+        self.actualizar_datos_en_hilo()
+
 
     def start_move(self, event):
         self._x = event.x
@@ -77,8 +83,8 @@ class VentanaInfo(tk.Tk):
             for item in self.datos:
                 linea = item["LINE"]
                 modelo = item["MODEL"]
-                linea_normalizada = linea.replace(" ", "").replace("-", "").lower()
-                seccion_normalizada = seccion.replace(" ", "").replace("-", "").lower()
+                linea_normalizada = self.normalizar_cadena(linea)
+                seccion_normalizada = self.normalizar_cadena(seccion)
 
                 if seccion_normalizada in linea_normalizada:
                     if "montaje" in linea.lower() and not montaje_agregado:
@@ -93,14 +99,8 @@ class VentanaInfo(tk.Tk):
                     fuente_modelo = font.Font(family="Arial", size=12, weight="bold")
                     fuente_datos = font.Font(family="Arial", size=10, weight="bold")
 
-                    label_modelo = ttk.Label(frame, text=titulo, font=fuente_modelo, background="cyan")
-                    label_modelo.pack(anchor="w", pady=(5, 0))
+                    label_modelo, label_producidos, label_faltan = self.crear_etiquetas(frame, titulo, fuente_modelo, fuente_datos)
 
-                    label_producidos = ttk.Label(frame, text="Pasaron por el primer puesto: ---", font=fuente_datos, background="cyan")
-                    label_producidos.pack(anchor="w")
-
-                    label_faltan = ttk.Label(frame, text="Faltan: ---", font=fuente_datos, background="cyan")
-                    label_faltan.pack(anchor="w", pady=(0, 10))
 
                     clave = (modelo, linea)
                     self.labels[clave] = (label_modelo, label_producidos, label_faltan)
@@ -113,29 +113,53 @@ class VentanaInfo(tk.Tk):
                 fila_actual += 1
 
     def actualizar_datos(self):
-        self.actualizar_textos_si_cambiaron()
+        while True:
+            self.actualizar_textos_si_cambiaron()
 
-        for item in self.datos:
-            modelo = item["MODEL"]
-            linea = item["LINE"]
-            fecha_inicio = item["FechaInicio"]
-            total = int(item["ProduccionTotal"])
-            clave = (modelo, linea)
+            for item in self.datos:
+                modelo = item["MODEL"]
+                linea = item["LINE"]
+                fecha_inicio = item["FechaInicio"]
+                total = int(item["ProduccionTotal"])
+                clave = (modelo, linea)
+                try:
+                  line_id = get_line_id(linea)
+                  product_id = get_product_id(modelo, line_id)
+                  producidos = get_produced_quantity(product_id, line_id, fecha_inicio)
+                except Exception as e:
+                    print(f"Error al obtener datos de producción para {modelo} en {linea}: {e}")
+                    producidos = 0  
+                faltan = total - producidos
 
-            line_id = get_line_id(linea)
-            product_id = get_product_id(modelo, line_id)
-            producidos = get_produced_quantity(product_id, line_id, fecha_inicio)
-            faltan = total - producidos
+                label_modelo, label_producidos, label_faltan = self.labels.get(clave, (None, None, None))
+                if label_producidos and label_faltan:
+                    label_producidos.config(text=f"Pasaron por el primer puesto: {producidos}")
+                    label_faltan.config(text=f"Faltan: {faltan}")
 
-            label_modelo, label_producidos, label_faltan = self.labels.get(clave, (None, None, None))
-            if label_producidos and label_faltan:
-                label_producidos.config(text=f"Pasaron por el primer puesto: {producidos}")
-                label_faltan.config(text=f"Faltan: {faltan}")
+            time.sleep(3)   # Espera 3 segundos antes de actualizar nuevamente
 
-        self.after(10000, self.actualizar_datos)
+    def actualizar_datos_en_hilo(self):
+        threading.Thread(target=self.actualizar_datos, daemon=True).start()
+    
+    def normalizar_cadena(self,cadena):
+        return cadena.replace(" ", "").replace("-", "").lower()
+    
+    def crear_etiquetas(self, frame, titulo, fuente_modelo, fuente_datos):
+      label_modelo = ttk.Label(frame, text=titulo, font=fuente_modelo, background="cyan")
+      label_modelo.pack(anchor="w", pady=(5, 0))
+
+      label_producidos = ttk.Label(frame, text="Pasaron por el primer puesto: ---", font=fuente_datos, background="cyan")
+      label_producidos.pack(anchor="w")
+
+      label_faltan = ttk.Label(frame, text="Faltan: ---", font=fuente_datos, background="cyan")
+      label_faltan.pack(anchor="w", pady=(0, 10))
+
+      return label_modelo, label_producidos, label_faltan
+    
 
     def actualizar_textos_si_cambiaron(self):
         nuevos_datos = self.obtener_datos_config()
+    
 
         for item in nuevos_datos:
             modelo = item["MODEL"]
