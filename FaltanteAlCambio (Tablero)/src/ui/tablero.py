@@ -16,7 +16,6 @@ class VentanaInfo(tk.Tk):
         self.configure(bg="black")
         self.current_scale = 1.0
 
-
         self.bind("<ButtonPress-1>", self.start_move)
         self.bind("<B1-Motion>", self.do_move)
 
@@ -40,6 +39,7 @@ class VentanaInfo(tk.Tk):
         self.datos = self.obtener_datos_config()
         self.labels = {}
         self.fuentes = {}  # Guardamos las fuentes para poder modificarlas
+        self.textos_modelos = {}  # Guardamos los textos de los modelos actuales
 
         self.construir_interfaz()
         self.actualizar_datos()
@@ -58,62 +58,63 @@ class VentanaInfo(tk.Tk):
         return raw_config
 
     def construir_interfaz(self):
-     fila_actual = 0
-     columna_actual = 0
+        fila_actual = 0
+        columna_actual = 0
 
-    # Configuramos el grid del contenedor principal (2 columnas x 2 filas)
-     for i in range(2):
-        self.container.grid_columnconfigure(i, weight=1)
-        self.container.grid_rowconfigure(i, weight=1)
+        # Configuramos el grid del contenedor principal (2 columnas x 2 filas)
+        for i in range(2):
+            self.container.grid_columnconfigure(i, weight=1)
+            self.container.grid_rowconfigure(i, weight=1)
 
-     for seccion in self.secciones:
-        frame = tk.LabelFrame(self.container, text=seccion, font=("Arial", 12, "bold"), bg="cyan", padx=10, pady=10)
-        frame.grid(row=fila_actual, column=columna_actual, sticky="nsew", padx=5, pady=5)
-        frame.grid_propagate(True)
+        for seccion in self.secciones:
+            frame = tk.LabelFrame(self.container, text=seccion, font=("Arial", 12, "bold"), bg="cyan", padx=10, pady=10)
+            frame.grid(row=fila_actual, column=columna_actual, sticky="nsew", padx=5, pady=5)
+            frame.grid_propagate(True)
 
-        montaje_agregado = False
-        accesorios_agregado = False
+            montaje_agregado = False
+            accesorios_agregado = False
 
-        for item in self.datos:
-            linea = item["LINE"]
-            modelo = item["MODEL"]
-            linea_normalizada = linea.replace(" ", "").replace("-", "").lower()
-            seccion_normalizada = seccion.replace(" ", "").replace("-", "").lower()
+            for item in self.datos:
+                linea = item["LINE"]
+                modelo = item["MODEL"]
+                linea_normalizada = linea.replace(" ", "").replace("-", "").lower()
+                seccion_normalizada = seccion.replace(" ", "").replace("-", "").lower()
 
-            if seccion_normalizada in linea_normalizada:
-                if "montaje" in linea.lower() and not montaje_agregado:
-                    titulo = f"Montaje: {modelo}"
-                    montaje_agregado = True
-                elif "accesorios" in linea.lower() and not accesorios_agregado:
-                    titulo = f"Accesorios: {modelo}"
-                    accesorios_agregado = True
-                else:
-                    continue
+                if seccion_normalizada in linea_normalizada:
+                    if "montaje" in linea.lower() and not montaje_agregado:
+                        titulo = f"Montaje: {modelo}"
+                        montaje_agregado = True
+                    elif "accesorios" in linea.lower() and not accesorios_agregado:
+                        titulo = f"Accesorios: {modelo}"
+                        accesorios_agregado = True
+                    else:
+                        continue
 
-                fuente_modelo = font.Font(family="Arial", size=12, weight="bold")
-                fuente_datos = font.Font(family="Arial", size=10, weight="bold")
+                    fuente_modelo = font.Font(family="Arial", size=12, weight="bold")
+                    fuente_datos = font.Font(family="Arial", size=10, weight="bold")
 
-                label_modelo = ttk.Label(frame, text=titulo, font=fuente_modelo, background="cyan")
-                label_modelo.pack(anchor="w", pady=(5, 0))
+                    label_modelo = ttk.Label(frame, text=titulo, font=fuente_modelo, background="cyan")
+                    label_modelo.pack(anchor="w", pady=(5, 0))
 
-                label_producidos = ttk.Label(frame, text="Pasaron por el primer puesto: ---", font=fuente_datos, background="cyan")
-                label_producidos.pack(anchor="w")
+                    label_producidos = ttk.Label(frame, text="Pasaron por el primer puesto: ---", font=fuente_datos, background="cyan")
+                    label_producidos.pack(anchor="w")
 
-                label_faltan = ttk.Label(frame, text="Faltan: ---", font=fuente_datos, background="cyan")
-                label_faltan.pack(anchor="w", pady=(0, 10))
+                    label_faltan = ttk.Label(frame, text="Faltan: ---", font=fuente_datos, background="cyan")
+                    label_faltan.pack(anchor="w", pady=(0, 10))
 
-                clave = (modelo, linea)
-                self.labels[clave] = (label_producidos, label_faltan)
-                self.fuentes[clave] = (fuente_datos, fuente_datos)
+                    clave = (modelo, linea)
+                    self.labels[clave] = (label_modelo, label_producidos, label_faltan)
+                    self.fuentes[clave] = (fuente_datos, fuente_datos)
+                    self.textos_modelos[clave] = modelo  # Guardamos el modelo actual
 
-        columna_actual += 1
-        if columna_actual >= 2:
-            columna_actual = 0
-            fila_actual += 1
+            columna_actual += 1
+            if columna_actual >= 2:
+                columna_actual = 0
+                fila_actual += 1
 
-        
     def actualizar_datos(self):
-        self.refrescar_interfaz_completa()
+        self.actualizar_textos_si_cambiaron()
+
         for item in self.datos:
             modelo = item["MODEL"]
             linea = item["LINE"]
@@ -126,14 +127,42 @@ class VentanaInfo(tk.Tk):
             producidos = get_produced_quantity(product_id, line_id, fecha_inicio)
             faltan = total - producidos
 
-            label_producidos, label_faltan = self.labels.get(clave, (None, None))
+            label_modelo, label_producidos, label_faltan = self.labels.get(clave, (None, None, None))
             if label_producidos and label_faltan:
                 label_producidos.config(text=f"Pasaron por el primer puesto: {producidos}")
                 label_faltan.config(text=f"Faltan: {faltan}")
 
         self.after(10000, self.actualizar_datos)
 
-    def on_resize(self, event):
+    def actualizar_textos_si_cambiaron(self):
+        nuevos_datos = self.obtener_datos_config()
+
+        for item in nuevos_datos:
+            modelo = item["MODEL"]
+            linea = item["LINE"]
+            clave = (modelo, linea)
+
+            if clave not in self.labels:
+                # Si es un nuevo modelo/linea, reconstruir todo
+                self.datos = nuevos_datos
+                self.labels.clear()
+                self.fuentes.clear()
+                self.textos_modelos.clear()
+                for widget in self.container.winfo_children():
+                    widget.destroy()
+                self.construir_interfaz()
+                return
+
+            # Si el modelo cambió, lo actualizamos
+            if self.textos_modelos.get(clave) != modelo:
+                label_modelo, _, _ = self.labels[clave]
+                nuevo_titulo = f"Montaje: {modelo}" if "montaje" in linea.lower() else f"Accesorios: {modelo}"
+                label_modelo.config(text=nuevo_titulo)
+                self.textos_modelos[clave] = modelo
+
+        self.datos = nuevos_datos
+
+    def on_resize(self, event):  # Callback para el resize
         if event.widget == self:
             scale_x = event.width / self.initial_width
             scale_y = event.height / self.initial_height
@@ -143,20 +172,3 @@ class VentanaInfo(tk.Tk):
                 nueva_fuente_size = max(8, int(10 * self.current_scale))
                 fuente_producidos.configure(size=nueva_fuente_size)
                 fuente_faltan.configure(size=nueva_fuente_size)
-
-    def refrescar_interfaz_completa(self):
-    # Eliminar todos los widgets actuales del container
-     for widget in self.container.winfo_children():
-        widget.destroy()
-
-    # Resetear estructuras internas
-     self.labels.clear()
-     self.fuentes.clear()
-     self.datos = self.obtener_datos_config()
-
-    # Volver a construir la interfaz
-     self.construir_interfaz()    
-     for clave, (fuente_producidos, fuente_faltan) in self.fuentes.items():
-                nueva_fuente_size = max(8, int(10 * self.current_scale))
-                fuente_producidos.configure(size=nueva_fuente_size)
-                fuente_faltan.configure(size=nueva_fuente_size)        
