@@ -1,0 +1,56 @@
+{
+  "API_MES": "http://mes.newsan.com.ar",
+  "DW_API": "http://arushap41:3001",
+  "ST_SOCKET_API": "http://arushap41:3030/",
+  
+  "LINEAS": [
+    {
+      "LINE": "LCD6 - Montaje",
+      "MODEL": "91DB43X3100",
+      "FechaInicio": "16-04-2025%2006:00",
+      "ProduccionTotal": 24453
+    },
+    {
+      "LINE": "LCD 6 - Accesorios",
+      "MODEL": "91DB43X3100",
+      "FechaInicio": "16-04-2025%2006:00",
+      "ProduccionTotal": 24453
+    },
+    {
+      "LINE": "LCD8 - Montaje",
+      "MODEL": "9143UR8750PSA",
+      "FechaInicio": "16-04-2025%2006:00",
+      "ProduccionTotal": 1880
+    },
+    {
+      "LINE": "LCD 8 - Accesorios",
+      "MODEL": "9143UR8750PSA",
+      "FechaInicio": "16-04-2025%2006:00",
+      "ProduccionTotal": 1880
+    },
+    {
+      "LINE": "Celda - Montaje",
+      "MODEL": "9165UR8750PSA",
+      "FechaInicio": "03-04-2025%2006:00",
+      "ProduccionTotal": 1000
+    },
+    {
+      "LINE": "Celda Accesorios",
+      "MODEL": "9165UR8750PSA",
+      "FechaInicio": "16-04-2025%2006:00",
+      "ProduccionTotal": 1000
+    },
+    {
+      "LINE": "Celda2-Montaje",
+      "MODEL": "9175UR9050PSJ",
+      "FechaInicio": "14-04-2025%2006:00",
+      "ProduccionTotal": 300
+    },
+    {
+      "LINE": "Celda2-Accesorios",
+      "MODEL": "9175UR9050PSJ",
+      "FechaInicio": "14-04-2025%2006:00",
+      "ProduccionTotal": 300
+    }
+  ]
+}
