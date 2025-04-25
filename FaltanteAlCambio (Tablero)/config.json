@@ -18,39 +18,39 @@
     },
     {
       "LINE": "LCD8 - Montaje",
-      "MODEL": "9143UR8750PSA",
-      "FechaInicio": "16-04-2025%2006:00",
-      "ProduccionTotal": 1880
+      "MODEL": "91DB58X7550",
+      "FechaInicio": "24-04-2025%2006:00",
+      "ProduccionTotal": 7728
     },
     {
       "LINE": "LCD 8 - Accesorios",
-      "MODEL": "9143UR8750PSA",
-      "FechaInicio": "16-04-2025%2006:00",
-      "ProduccionTotal": 1880
+      "MODEL": "91DB58X7550",
+      "FechaInicio": "24-04-2025%2006:00",
+      "ProduccionTotal": 7728
     },
     {
       "LINE": "Celda - Montaje",
-      "MODEL": "9165UR8750PSA",
-      "FechaInicio": "03-04-2025%2006:00",
-      "ProduccionTotal": 1000
+      "MODEL": "9165QNED80SRA",
+      "FechaInicio": "25-04-2025%2006:00",
+      "ProduccionTotal": 500
     },
     {
       "LINE": "Celda Accesorios",
-      "MODEL": "9165UR8750PSA",
-      "FechaInicio": "16-04-2025%2006:00",
-      "ProduccionTotal": 1000
+      "MODEL": "9165QNED80SRA",
+      "FechaInicio": "25-04-2025%2006:00",
+      "ProduccionTotal": 500
     },
     {
       "LINE": "Celda2-Montaje",
-      "MODEL": "9175UR9050PSJ",
-      "FechaInicio": "14-04-2025%2006:00",
-      "ProduccionTotal": 300
+      "MODEL": "9175QNED80SRA",
+      "FechaInicio": "24-04-2025%2006:00",
+      "ProduccionTotal": 200
     },
     {
       "LINE": "Celda2-Accesorios",
-      "MODEL": "9175UR9050PSJ",
-      "FechaInicio": "14-04-2025%2006:00",
-      "ProduccionTotal": 300
+      "MODEL": "9175QNED80SRA",
+      "FechaInicio": "24-04-2025%2006:00",
+      "ProduccionTotal": 200
     }
   ]
 }

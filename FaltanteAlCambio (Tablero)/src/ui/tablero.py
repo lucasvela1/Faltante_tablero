@@ -12,7 +12,7 @@ class VentanaInfo(tk.Tk):
 
         self.title("Tablero de Faltantes")
         self.geometry("550x460+20+20")
-        self.attributes("-topmost", True) # Mantener la ventana siempre en primer plano
+        #self.attributes("-topmost", True) # Mantener la ventana siempre en primer plano
         self.resizable(True, True)
         self.configure(bg="black")
         self.current_scale = 1.0
@@ -20,7 +20,7 @@ class VentanaInfo(tk.Tk):
         self.bind("<ButtonPress-1>", self.start_move)
         self.bind("<B1-Motion>", self.do_move)
         
-    
+           
 
         # Escuchamos el resize
         self.bind("<Configure>", self.on_resize)
@@ -136,7 +136,7 @@ class VentanaInfo(tk.Tk):
                     label_producidos.config(text=f"Pasaron por el primer puesto: {producidos}")
                     label_faltan.config(text=f"Faltan: {faltan}")
 
-            time.sleep(3)   # Espera 3 segundos antes de actualizar nuevamente
+            time.sleep(6)   # Espera 6 segundos antes de actualizar nuevamente
 
     def actualizar_datos_en_hilo(self):
         threading.Thread(target=self.actualizar_datos, daemon=True).start()

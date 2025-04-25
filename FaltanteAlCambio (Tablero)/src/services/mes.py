@@ -32,7 +32,7 @@ LINE_MAP = {
     },
     "Celda - Montaje": {
         "id": 13,
-        "estacion": "pantalla - placa 1 ó pantalla - placa 1"
+        "estacion": "pantalla - placa 1 ó pantalla - placa 1 ó pantalla - placas - técnica"
     },
     "Celda Accesorios": {
         "id": 12,
@@ -40,7 +40,7 @@ LINE_MAP = {
     },
     "Celda2-Montaje": {
         "id": 82,
-        "estacion": "pantalla - placas - técnica"
+        "estacion": "pantalla - placas - técnica ó hermanado Placa - pantalla	"
     },
     "Celda2-Accesorios": {
         "id": 83,
