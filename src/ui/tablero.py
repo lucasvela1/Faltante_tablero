@@ -1,14 +1,12 @@
 import tkinter as tk
 from tkinter import ttk
 from tkinter import font
-# Ensure correct import path based on your project structure
-from src.services.mes import login_jmmes, get_product_id, get_line_id, get_produced_quantity # Assuming mes.py is in src/services/
+from src.services.mes import login_jmmes, get_product_id, get_line_id, get_produced_quantity 
 from src.read_config import read_config
 import threading
 import time
-import logging # Use logging
+import logging 
 
-# Configure logging (optional, but helpful)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class VentanaInfo(tk.Tk):
@@ -37,14 +35,12 @@ class VentanaInfo(tk.Tk):
         self.container = tk.Frame(self, bg="cyan")
         self.container.pack(expand=True, fill="both", padx=10, pady=10)
 
-        # Define sections (must match keys in construir_interfaz logic)
         self.secciones = ["LCD6", "LCD8", "Celda", "Celda2"]
 
         # --- Data & State ---
-        self.datos = [] # Initialized empty, filled later
-        # Stores tuples: (label_modelo, label_prod_1, label_faltan_1, label_prod_emb, label_faltan_emb)
+        self.datos = [] 
         self.labels = {}
-        self.fuentes_datos_base = {} # Store base font config if needed for reset/reference
+        self.fuentes_datos_base = {} 
         self.textos_modelos = {}  # Guardamos los textos de los modelos actuales
 
         # --- Initialization ---
@@ -62,12 +58,10 @@ class VentanaInfo(tk.Tk):
 
 
     def start_move(self, event):
-        # Record mouse position relative to window's top-left corner
         self._x = event.x
         self._y = event.y
 
     def do_move(self, event):
-        # Calculate new window position based on mouse movement
         deltax = event.x - self._x
         deltay = event.y - self._y
         x = self.winfo_x() + deltax
@@ -86,7 +80,6 @@ class VentanaInfo(tk.Tk):
             return [] # Return empty list on error
 
     def normalizar_cadena(self, cadena):
-        """Helper to normalize strings for comparison."""
         return cadena.replace(" ", "").replace("-", "").lower()
 
     def crear_etiquetas_principales(self, frame, titulo, fuente_modelo, fuente_datos):
@@ -138,7 +131,6 @@ class VentanaInfo(tk.Tk):
         for seccion in self.secciones:
             frame = tk.LabelFrame(self.container, text=seccion, font=("Arial", base_model_font_size, "bold"), bg="cyan", fg="black", padx=10, pady=10, borderwidth=2, relief=tk.GROOVE)
             frame.grid(row=fila_actual, column=columna_actual, sticky="nsew", padx=5, pady=5)
-            #frame.grid_propagate(True) 
             montaje_agregado = False
             accesorios_agregado = False
             seccion_normalizada = self.normalizar_cadena(seccion)
