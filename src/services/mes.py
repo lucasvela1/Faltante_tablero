@@ -31,7 +31,8 @@ LINE_MAP = {
     "LCD8 - Montaje": {
         "id": 10,
         "estacion": "pantalla - placa 1",
-        "estacion_embalaje": "Accesorios"
+        "estacion_embalaje": "Accesorios",
+        "estacion_lote": "Palletizado"
     },"LCD 8 - Accesorios": {
         "id": 9,
         "estacion": "balanza ó puesto 1"
@@ -39,7 +40,8 @@ LINE_MAP = {
     },
     "Celda - Montaje": {
         "id": 13,
-        "estacion": "pantalla - placa 1 ó pantalla - placa 1 ó pantalla - placas - técnica ó hermanado placa - pantalla"
+        "estacion": "pantalla - placa 1 ó pantalla - placa 1 ó pantalla - placas - técnica ó hermanado placa - pantalla",
+        "estacion_lote": "Palletizado"
     },
     "Celda Accesorios": {
         "id": 12,
@@ -47,7 +49,8 @@ LINE_MAP = {
     },
     "Celda2-Montaje": {
         "id": 82,
-        "estacion": "pantalla - placas - técnica ó hermanado Placa - pantalla"
+        "estacion": "pantalla - placas - técnica ó hermanado Placa - pantalla",
+        "estacion_lote": "Palletizado"
     },
     "Celda2-Accesorios": {
         "id": 83,

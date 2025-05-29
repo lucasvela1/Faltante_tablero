@@ -7,50 +7,53 @@
     {
       "LINE": "LCD6 - Montaje",
       "MODEL": "91DB43X3100",
-      "FechaInicio": "16-04-2025%2006:00",
-      "ProduccionTotal": 24453
+      "FechaInicio": "24-05-2025%2006:00",
+      "ProduccionTotal": 16302
     },
     {
       "LINE": "LCD 6 - Accesorios",
       "MODEL": "91DB43X3100",
-      "FechaInicio": "16-04-2025%2006:00",
-      "ProduccionTotal": 24453
+      "FechaInicio": "24-05-2025%2006:00",
+      "ProduccionTotal": 16302
     },
     {
       "LINE": "LCD8 - Montaje",
-      "MODEL": "91DB58X7550",
-      "FechaInicio": "24-04-2025%2006:00",
-      "ProduccionTotal": 7728
+      "MODEL": "9150UR8750PSA",
+      "FechaInicio": "25-05-2025%2006:00",
+      "ProduccionTotal": 3744,
+      "CantidadLote": 3744
     },
     {
       "LINE": "LCD 8 - Accesorios",
-      "MODEL": "91DB58X7550",
-      "FechaInicio": "24-04-2025%2006:00",
-      "ProduccionTotal": 7728
+      "MODEL": "9150UR8750PSA",
+      "FechaInicio": "25-05-2025%2006:00",
+      "ProduccionTotal": 3744
     },
     {
       "LINE": "Celda - Montaje",
-      "MODEL": "91DQ65X9600",
-      "FechaInicio": "02-05-2025%2006:00",
-      "ProduccionTotal": 1100
+      "MODEL": "9170UR8750PSA",
+      "FechaInicio": "28-05-2025%2006:00",
+      "ProduccionTotal": 500,
+      "CantidadLote": 500
     },
     {
       "LINE": "Celda Accesorios",
-      "MODEL": "91DQ65X9600",
-      "FechaInicio": "02-05-2025%2006:00",
-      "ProduccionTotal": 1100
+      "MODEL": "9170UR8750PSA",
+      "FechaInicio": "28-05-2025%2006:00",
+      "ProduccionTotal": 500
     },
     {
       "LINE": "Celda2-Montaje",
-      "MODEL": "9175QNED80SRA",
-      "FechaInicio": "24-04-2025%2006:00",
-      "ProduccionTotal": 200
+      "MODEL": "91DV75X8580",
+      "FechaInicio": "25-05-2025%2006:00",
+      "ProduccionTotal": 3330,
+      "CantidadLote": 1110
     },
     {
       "LINE": "Celda2-Accesorios",
-      "MODEL": "9175QNED80SRA",
-      "FechaInicio": "24-04-2025%2006:00",
-      "ProduccionTotal": 200
+      "MODEL": "91DV75X8580",
+      "FechaInicio": "25-05-2025%2006:00",
+      "ProduccionTotal": 3330
     }
   ]
 }
