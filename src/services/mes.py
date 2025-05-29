@@ -2,9 +2,8 @@ import requests
 import json
 from datetime import datetime
 from ..read_config import read_config
-import logging # Use logging for better error messages
+import logging 
 
-# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 API_MES = read_config("API_MES")
@@ -31,15 +30,16 @@ LINE_MAP = {
     "LCD8 - Montaje": {
         "id": 10,
         "estacion": "pantalla - placa 1",
-        "estacion_embalaje": "Accesorios"
+        "estacion_embalaje": "Accesorios",
+        "estacion_lote": "Palletizado"
     },"LCD 8 - Accesorios": {
         "id": 9,
         "estacion": "balanza ó puesto 1"
-        # NO estacion_embalaje for Accesorios
     },
     "Celda - Montaje": {
         "id": 13,
-        "estacion": "pantalla - placa 1 ó pantalla - placa 1 ó pantalla - placas - técnica ó hermanado placa - pantalla"
+        "estacion": "pantalla - placa 1 ó pantalla - placa 1 ó pantalla - placas - técnica ó hermanado placa - pantalla",
+        "estacion_lote": "Palletizado"
     },
     "Celda Accesorios": {
         "id": 12,
@@ -47,7 +47,8 @@ LINE_MAP = {
     },
     "Celda2-Montaje": {
         "id": 82,
-        "estacion": "pantalla - placas - técnica ó hermanado Placa - pantalla"
+        "estacion": "pantalla - placas - técnica ó hermanado Placa - pantalla",
+        "estacion_lote": "Palletizado"
     },
     "Celda2-Accesorios": {
         "id": 83,
@@ -63,8 +64,7 @@ def login_jmmes():
     try:
         logging.info("Obteniendo XSRF token...")
         get_token = requests.get(f"{API_MES}/api/XsrfToken")
-        get_token.raise_for_status() # Raise exception for bad status codes
-
+        get_token.raise_for_status() 
         antiforgery_token = get_token.cookies.get(".AspNetCore.Antiforgery.T8b4Fs--lAw")
         xsrf_token = get_token.cookies.get("XSRF-TOKEN")
 
@@ -103,9 +103,8 @@ def login_jmmes():
 
 def get_line_id(line_name):
     entry = LINE_MAP.get(line_name)
-    return entry.get("id") if entry else None # Use .get() for safety
+    return entry.get("id") if entry else None 
 
-# Renamed and generalized function
 def get_station_name_by_key(line_name, key_name="estacion"):
     """Obtiene el nombre de la estación (o nombres separados por 'ó') para una línea dada y una clave específica."""
     entry = LINE_MAP.get(line_name)
@@ -114,11 +113,7 @@ def get_station_name_by_key(line_name, key_name="estacion"):
 def get_product_id(modelo: str, line_id: int) -> int | None:
     if not TOKEN or not X_XSRF_TOKEN:
         logging.warning("Intento de obtener Product ID sin estar logueado.")
-        # Optional: try login again?
-        # login_jmmes()
-        # if not TOKEN or not X_XSRF_TOKEN:
-        #     return None
-        return None # Or handle appropriately
+        return None 
 
     logging.info(f"Obteniendo ID para el modelo {modelo} en la línea {line_id}...")
     url = f"{API_MES}/api/Products/GetByNameAndLineId/{modelo}/{line_id}"
@@ -139,9 +134,8 @@ def get_product_id(modelo: str, line_id: int) -> int | None:
             return product_id
         elif r.status_code == 401:
              logging.warning("Token expirado o inválido al obtener Product ID. Intentando re-loguear...")
-             login_jmmes() # Attempt to re-login
-             # Optional: retry get_product_id once after re-login
-             return None # Indicate failure for this attempt
+             login_jmmes() 
+             return None 
         else:
             logging.error(f"Error al obtener Product ID para {modelo} en {line_id}. Status: {r.status_code}. Respuesta: {r.text}")
             return None
@@ -154,7 +148,6 @@ def get_product_id(modelo: str, line_id: int) -> int | None:
         return None
 
 
-# Refactored function
 def get_produced_quantity(product_id, line_id, fecha_inicio, line_name, station_key_name="estacion"):
     """
     Obtiene la cantidad producida para un producto/línea/fecha dados,
@@ -162,19 +155,16 @@ def get_produced_quantity(product_id, line_id, fecha_inicio, line_name, station_
     """
     if not TOKEN or not X_XSRF_TOKEN:
         logging.warning(f"Intento de obtener cantidad producida ({station_key_name}) sin estar logueado.")
-        return 0 # Cannot proceed without login
-
+        return 0 
     headers = {
         "X-XSRF-TOKEN": X_XSRF_TOKEN,
         "token": TOKEN
     }
 
-    # Ensure fecha_inicio has the correct URL encoding if needed (though requests usually handles params)
-    # fecha_inicio_encoded = fecha_inicio.replace(" ", "%20") # Already seems encoded in config?
-    fecha_fin = datetime.now().strftime("%d-%m-%Y %H:%M") # Use space, requests will encode
-    fecha_fin_encoded = fecha_fin.replace(" ", "%20") # Match format if required by API
+  
+    fecha_fin = datetime.now().strftime("%d-%m-%Y %H:%M") 
+    fecha_fin_encoded = fecha_fin.replace(" ", "%20") 
 
-    # Careful with date formats - ensure API expects DD-MM-YYYY
     url = f"{API_MES}/api/producedQuantities/GetReport/1/{fecha_inicio}/{fecha_fin_encoded}"
     params = {
         "productId": product_id,
@@ -190,25 +180,21 @@ def get_produced_quantity(product_id, line_id, fecha_inicio, line_name, station_
             try:
                 data = r.json()
 
-                # Defensive checks for expected data structure
                 if not data or not isinstance(data, list) or not data[0] or not isinstance(data[0], list) or not data[0][0] or not isinstance(data[0][0], list):
                     logging.warning(f"Estructura de datos inesperada en respuesta para {line_name}/{product_id} ({station_key_name}). Respuesta: {r.text}")
                     return 0
 
-                estaciones_data = data[0][0] # Contains the list of station dicts
+                estaciones_data = data[0][0] 
 
-                # Get the target station name(s) for this line and key (e.g., "embalaje_lcd6_montaje")
                 target_station_names_str = get_station_name_by_key(line_name, station_key_name)
 
                 if not target_station_names_str:
                     logging.warning(f"No se encontró nombre de estación para key '{station_key_name}' en linea '{line_name}' (ID: {line_id}) en LINE_MAP.")
                     return 0
 
-                # Handle multiple possible station names separated by "ó"
                 possible_station_names = [e.strip().lower() for e in target_station_names_str.split("ó")]
                 logging.debug(f"Buscando estaciones: {possible_station_names}")
 
-                # Find the count for the first matching target station
                 for est_info in estaciones_data:
                     station_name_api = est_info.get("stationGroupName", "").strip().lower()
                     if station_name_api in possible_station_names:
@@ -217,8 +203,7 @@ def get_produced_quantity(product_id, line_id, fecha_inicio, line_name, station_
                         return count
 
                 logging.warning(f"No se encontró ninguna de las estaciones '{possible_station_names}' en la respuesta API para {line_name}/{product_id}.")
-                # logging.debug(f"Estaciones disponibles en API: {[e.get('stationGroupName', '') for e in estaciones_data]}")
-                return 0 # Return 0 if none of the specific stations were found in the response list
+                return 0 
 
             except (json.JSONDecodeError, IndexError, TypeError, KeyError) as e:
                 logging.error(f"Error procesando respuesta JSON para {line_name}/{product_id} ({station_key_name}): {e}")
@@ -226,8 +211,8 @@ def get_produced_quantity(product_id, line_id, fecha_inicio, line_name, station_
                 return 0
         elif r.status_code == 401:
              logging.warning(f"Token expirado o inválido al obtener cantidad producida ({station_key_name}). Intentando re-loguear...")
-             login_jmmes() # Attempt to re-login
-             return 0 # Indicate failure for this attempt
+             login_jmmes() 
+             return 0 
         else:
             logging.error(f"Error al obtener producción ({station_key_name}) para {line_name}/{product_id}. Status: {r.status_code}. Respuesta: {r.text}")
             return 0
