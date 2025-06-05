@@ -30,7 +30,7 @@ LINE_MAP = {
     "LCD8 - Montaje": {
         "id": 10,
         "estacion": "pantalla - placa 1",
-        "estacion_embalaje": "Accesorios",
+        "estacion_embalaje": "Embalaje",
         "estacion_lote": "Palletizado"
     },"LCD 8 - Accesorios": {
         "id": 9,
@@ -82,7 +82,7 @@ def login_jmmes():
         }
 
         logging.info("Enviando login...")
-        payload = json.dumps({"name": "operador", "password": "0P3r4dOr"})
+        payload = json.dumps({"name": "lvela", "password": "1997"})
         r = requests.post(f"{API_MES}/api/User/Authenticate", data=payload, headers=headers)
 
         if r.status_code != 200:

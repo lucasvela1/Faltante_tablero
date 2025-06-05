@@ -6,40 +6,40 @@
   "LINEAS": [
     {
       "LINE": "LCD6 - Montaje",
-      "MODEL": "91DB43X3100",
-      "FechaInicio": "24-05-2025%2006:00",
-      "ProduccionTotal": 16302
+      "MODEL": "91PLD50US25VH",
+      "FechaInicio": "03-06-2025%2006:00",
+      "ProduccionTotal": 3470
     },
     {
       "LINE": "LCD 6 - Accesorios",
-      "MODEL": "91DB43X3100",
-      "FechaInicio": "24-05-2025%2006:00",
-      "ProduccionTotal": 16302
+      "MODEL": "91PLD50US25VH",
+      "FechaInicio": "03-06-2025%2006:00",
+      "ProduccionTotal": 3470
     },
     {
       "LINE": "LCD8 - Montaje",
-      "MODEL": "9150UR8750PSA",
-      "FechaInicio": "25-05-2025%2006:00",
-      "ProduccionTotal": 3744,
-      "CantidadLote": 3744
+      "MODEL": "9160UQ8050PSB",
+      "FechaInicio": "04-06-2025%2006:00",
+      "ProduccionTotal": 640,
+      "CantidadLote": 640
     },
     {
       "LINE": "LCD 8 - Accesorios",
-      "MODEL": "9150UR8750PSA",
-      "FechaInicio": "25-05-2025%2006:00",
-      "ProduccionTotal": 3744
+      "MODEL": "60UQ8050PSB",
+      "FechaInicio": "04-06-2025%2006:00",
+      "ProduccionTotal": 640
     },
     {
       "LINE": "Celda - Montaje",
-      "MODEL": "9170UR8750PSA",
-      "FechaInicio": "28-05-2025%2006:00",
+      "MODEL": "91DR55X8800",
+      "FechaInicio": "30-05-2025%2006:00",
       "ProduccionTotal": 500,
       "CantidadLote": 500
     },
     {
       "LINE": "Celda Accesorios",
-      "MODEL": "9170UR8750PSA",
-      "FechaInicio": "28-05-2025%2006:00",
+      "MODEL": "91DR55X8800",
+      "FechaInicio": "30-05-2025%2006:00",
       "ProduccionTotal": 500
     },
     {
@@ -47,7 +47,7 @@
       "MODEL": "91DV75X8580",
       "FechaInicio": "25-05-2025%2006:00",
       "ProduccionTotal": 3330,
-      "CantidadLote": 1110
+      "CantidadLote": 2220
     },
     {
       "LINE": "Celda2-Accesorios",
