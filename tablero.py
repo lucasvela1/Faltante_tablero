@@ -9,7 +9,7 @@ import time
 import logging
 
 # --- 1. CONFIGURACIÓN Y CONSTANTES GLOBALES ---
-#logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - [%(funcName)s] %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [%(funcName)s] %(message)s')
 
 API_MES = "http://mes.newsan.com.ar"
 RUTA_EXCEL = r'\\ush-nt-3\v1\infprod\PLAN_PRO\Programas de producción x planta\Programa P5 - 2025.xlsx'
@@ -30,66 +30,49 @@ X_XSRF_TOKEN, TOKEN, COOKIE = "", "", ""
 
 # --- 2. FUNCIONES DE LÓGICA (EXCEL + API) ---
 
-def encontrar_lotes_de_produccion(ruta_archivo, nombres_hojas, fecha_referencia):
-    datos_por_linea = {}
+def encontrar_todos_los_lotes(ruta_archivo, nombre_hoja):
     try:
-        xls = pd.ExcelFile(ruta_archivo)
+        df = pd.read_excel(ruta_archivo, sheet_name=nombre_hoja, header=14)
+        df.columns = df.columns.str.replace(r'\s+', ' ', regex=True).str.strip()
+        
+        if 'Cant.' in df.columns:
+            df.rename(columns={'Cant.': 'Cant'}, inplace=True)
+
+        col_fecha = 'Fecha Ing. Produccion'
+        columnas_requeridas = [col_fecha, 'Modelo', 'Cant', 'Lote', 'PO']
+        
+        if not all(col in df.columns for col in columnas_requeridas):
+            logging.warning(f"La hoja '{nombre_hoja}' no tiene todas las columnas requeridas.")
+            logging.warning(f"Se necesitan: {columnas_requeridas}")
+            logging.warning(f"Se encontraron: {list(df.columns)}")
+            return []
+            
+        df[col_fecha] = pd.to_datetime(df[col_fecha], errors='coerce')
+        df.dropna(subset=[col_fecha, 'Modelo'], inplace=True)
+        df.reset_index(inplace=True, drop=True)
+        
+        macro_lotes = []
+        current_pos = 0
+        while current_pos < len(df):
+            modelo_actual = df.iloc[current_pos]['Modelo']
+            end_pos = current_pos
+            while end_pos + 1 < len(df) and df.iloc[end_pos + 1]['Modelo'] == modelo_actual:
+                end_pos += 1
+            
+            lote_df = df.iloc[current_pos : end_pos + 1]
+            micro_lotes = lote_df[['Lote', 'PO', 'Cant']].to_dict('records')
+
+            macro_lotes.append({
+                "MODELO": modelo_actual,
+                "FECHA_INICIO": lote_df[col_fecha].min().strftime('%d-%m-%Y'),
+                "PRODUCCION_TOTAL": int(lote_df['Cant'].fillna(0).clip(lower=0).sum()),
+                "MICRO_LOTES": micro_lotes
+            })
+            current_pos = end_pos + 1
+        return macro_lotes
     except Exception as e:
-        logging.error(f"No se pudo abrir el archivo Excel: {e}")
-        return {}
-
-    for nombre_linea in nombres_hojas:
-        try:
-            df = pd.read_excel(xls, sheet_name=nombre_linea, header=14)
-            df.columns = df.columns.str.replace(r'\s+', ' ', regex=True).str.strip()
-            col_fecha = 'Fecha Ing. Produccion'
-            if not all(col in df.columns for col in [col_fecha, 'Modelo', 'Cant.']): continue
-            
-            df[col_fecha] = pd.to_datetime(df[col_fecha], errors='coerce')
-            df.dropna(subset=[col_fecha, 'Modelo'], inplace=True)
-            df.reset_index(inplace=True, drop=True)
-            if df.empty: continue
-
-            indices_candidatos = df.index[df[col_fecha] <= fecha_referencia]
-            start_index = 0
-            if len(indices_candidatos) > 0:
-                df_candidatos = df.loc[indices_candidatos]
-                fecha_mas_reciente = df_candidatos[col_fecha].max()
-                indices_en_fecha = df_candidatos.index[df_candidatos[col_fecha] == fecha_mas_reciente]
-                if len(indices_en_fecha) > 0:
-                    start_index = indices_en_fecha.min()
-
-            
-            # Ahora, desde este punto de inicio, buscamos hacia atrás para encontrar el verdadero inicio del lote
-            modelo_de_inicio = df.iloc[start_index]['Modelo']
-            true_start_of_current_lot = start_index
-            while true_start_of_current_lot > 0 and df.iloc[true_start_of_current_lot - 1]['Modelo'] == modelo_de_inicio:
-                true_start_of_current_lot -= 1
-
-            # Procesamos todos los lotes desde el inicio real del lote actual hacia adelante
-            lotes_futuros = []
-            current_pos = true_start_of_current_lot
-            while current_pos < len(df):
-                modelo_actual = df.iloc[current_pos]['Modelo']
-                end_pos = current_pos
-                while end_pos + 1 < len(df) and df.iloc[end_pos + 1]['Modelo'] == modelo_actual:
-                    end_pos += 1
-                
-                lote_df = df.iloc[current_pos : end_pos + 1]
-                fecha_inicio_lote = lote_df[col_fecha].min().strftime('%d-%m-%Y')
-                produccion_total_lote = int(lote_df['Cant.'].fillna(0).clip(lower=0).sum())
-                lotes_futuros.append({
-                    "LINEA_BASE": nombre_linea, "MODELO": modelo_actual,
-                    "FECHA_INICIO": fecha_inicio_lote,
-                    "PRODUCCION_TOTAL": produccion_total_lote
-                })
-                current_pos = end_pos + 1
-            
-            datos_por_linea[nombre_linea] = lotes_futuros
-        except Exception as e:
-            logging.error(f"Fallo al procesar la hoja '{nombre_linea}': {e}", exc_info=True)
-            continue
-    return datos_por_linea
+        logging.error(f"Fallo al procesar la hoja '{nombre_hoja}': {e}")
+        return []
 
 def login_jmmes():
     global X_XSRF_TOKEN, TOKEN, COOKIE
@@ -125,8 +108,6 @@ def get_produced_quantity(product_id, line_id, fecha_inicio, line_name, station_
     fecha_api = f"{fecha_inicio} 06:00".replace(' ', '%20')
     url = f"{API_MES}/api/producedQuantities/GetReport/1/{fecha_api}/{fecha_fin}"
     params = {"productId": product_id, "lineId": line_id}
-    
-    
     try:
         r = requests.get(url, headers=headers, params=params, timeout=10)
         if r.status_code == 200:
@@ -137,68 +118,76 @@ def get_produced_quantity(product_id, line_id, fecha_inicio, line_name, station_
             possible_names = [e.strip().lower() for e in target_station_names_str.split("ó")]
             for est_info in estaciones_data:
                 if est_info.get("stationGroupName", "").strip().lower() in possible_names:
-                    cantidad = est_info.get("count", 0)
-                    logging.info(f"API retornó para '{station_key_name}': {cantidad}")
-                    return cantidad
+                    return est_info.get("count", 0)
             return 0
         return 0
     except (requests.exceptions.RequestException, json.JSONDecodeError, IndexError, TypeError): return 0
 
 def obtener_datos_para_display():
-    lotes_por_linea = encontrar_lotes_de_produccion(RUTA_EXCEL, NOMBRES_HOJAS, datetime.now())
     datos_finales_display = {}
+    for nombre_hoja in NOMBRES_HOJAS:
+        todos_los_lotes = encontrar_todos_los_lotes(RUTA_EXCEL, nombre_hoja)
+        if not todos_los_lotes: continue
 
-    for linea_base, cola_lotes in lotes_por_linea.items():
-        lote_activo = None
-        modelo_siguiente = "---"
+        indice_teorico = -1
+        fecha_mas_cercana = datetime.min
+        for i, lote in enumerate(todos_los_lotes):
+            fecha_lote = datetime.strptime(lote["FECHA_INICIO"], '%d-%m-%Y')
+            if fecha_lote.date() <= datetime.now().date() and fecha_lote >= fecha_mas_cercana:
+                fecha_mas_cercana = fecha_lote
+                indice_teorico = i
         
-        logging.info(f"Evaluando cola para '{linea_base}' con {len(cola_lotes)} lotes futuros...")
-        for i, lote_candidato in enumerate(cola_lotes):
-            planificado = lote_candidato["PRODUCCION_TOTAL"]
-            linea_m_candidata = f"{linea_base} - Montaje"
-            line_id_m_candidato = LINE_MAP.get(linea_m_candidata, {}).get("id")
-            
-            producido_total = 0
-            if line_id_m_candidato:
-                product_id = get_product_id(lote_candidato["MODELO"], line_id_m_candidato)
-                if product_id:
-                    producido_total = get_produced_quantity(product_id, line_id_m_candidato, lote_candidato["FECHA_INICIO"], linea_m_candidata, "estacion")
+        if indice_teorico == -1: continue
 
-            faltante = planificado - producido_total
+        lote_teorico = todos_los_lotes[indice_teorico]
+        linea_m_teorica = f"{nombre_hoja} - Montaje"
+        line_id_m_teorico = LINE_MAP.get(linea_m_teorica, {}).get("id")
+        producido_teorico = 0
+        if line_id_m_teorico:
+            product_id_teorico = get_product_id(lote_teorico["MODELO"], line_id_m_teorico)
+            if product_id_teorico:
+                producido_teorico = get_produced_quantity(product_id_teorico, line_id_m_teorico, lote_teorico["FECHA_INICIO"], linea_m_teorica, "estacion")
 
-            if faltante > 0:
-                lote_activo = lote_candidato
-                if i + 1 < len(cola_lotes):
-                    modelo_siguiente = cola_lotes[i+1]["MODELO"]
-                logging.info(f"Lote activo para '{linea_base}' es {lote_activo['MODELO']} que inicia en {lote_activo['FECHA_INICIO']}")
-                break
+        indice_activo = indice_teorico
+        if producido_teorico == 0 and indice_teorico > 0:
+            indice_activo = indice_teorico - 1
         
-        if not lote_activo and cola_lotes:
-            lote_activo = cola_lotes[-1]
+        lote_activo = todos_los_lotes[indice_activo]
+        modelo_siguiente = todos_los_lotes[indice_activo + 1]["MODELO"] if indice_activo + 1 < len(todos_los_lotes) else "---"
 
-        if lote_activo:
-            modelo, plan, fecha_inicio = lote_activo["MODELO"], lote_activo["PRODUCCION_TOTAL"], lote_activo["FECHA_INICIO"]
-            linea_m, line_id_m = f"{linea_base} - Montaje", LINE_MAP.get(f"{linea_base} - Montaje", {}).get("id")
-            linea_a, line_id_a = f"{linea_base} - Accesorios", LINE_MAP.get(f"{linea_base} - Accesorios", {}).get("id")
-            
-            prod1, prod_emb, prod_acc = 0, 0, 0
-            if line_id_m:
-                product_id = get_product_id(modelo, line_id_m)
-                if product_id:
-                    prod1 = get_produced_quantity(product_id, line_id_m, fecha_inicio, linea_m, "estacion")
-                    if "estacion_embalaje" in LINE_MAP.get(linea_m, {}):
-                        prod_emb = get_produced_quantity(product_id, line_id_m, fecha_inicio, linea_m, "estacion_embalaje")
-            if line_id_a:
-                product_id_acc = get_product_id(modelo, line_id_a)
-                if product_id_acc:
-                    prod_acc = get_produced_quantity(product_id_acc, line_id_a, fecha_inicio, linea_a, "estacion")
-            
-            datos_finales_display[linea_base] = {
-                "MODELO": modelo, "PLAN": plan, "MODELO_SIGUIENTE": modelo_siguiente,
-                "PROD1": prod1, "FALTAN1": plan - prod1,
-                "PROD_EMB": prod_emb, "FALTAN_EMB": plan - prod_emb,
-                "PROD_ACC": prod_acc, "FALTAN_ACC": plan - prod_acc
-            }
+        modelo, plan, fecha_inicio = lote_activo["MODELO"], lote_activo["PRODUCCION_TOTAL"], lote_activo["FECHA_INICIO"]
+        linea_m, line_id_m = f"{nombre_hoja} - Montaje", LINE_MAP.get(f"{nombre_hoja} - Montaje", {}).get("id")
+        linea_a, line_id_a = f"{nombre_hoja} - Accesorios", LINE_MAP.get(f"{nombre_hoja} - Accesorios", {}).get("id")
+        
+        prod1, prod_emb, prod_acc = 0, 0, 0
+        micro_lote_activo_info = {}
+        if line_id_m:
+            product_id = get_product_id(modelo, line_id_m)
+            if product_id:
+                prod1 = get_produced_quantity(product_id, line_id_m, fecha_inicio, linea_m, "estacion")
+                if "estacion_embalaje" in LINE_MAP.get(linea_m, {}):
+                    prod_emb = get_produced_quantity(product_id, line_id_m, fecha_inicio, linea_m, "estacion_embalaje")
+                
+                cantidad_acumulada = 0
+                for micro_lote in lote_activo["MICRO_LOTES"]:
+                    cantidad_acumulada += int(micro_lote.get('Cant', 0) or 0)
+                    if prod1 < cantidad_acumulada:
+                        faltante_micro_lote = cantidad_acumulada - prod1
+                        micro_lote_activo_info = {"LOTE": micro_lote['Lote'], "PO": micro_lote['PO'], "FALTAN_LOTE": faltante_micro_lote}
+                        break
+        
+        if line_id_a:
+            product_id_acc = get_product_id(modelo, line_id_a)
+            if product_id_acc:
+                prod_acc = get_produced_quantity(product_id_acc, line_id_a, fecha_inicio, linea_a, "estacion")
+        
+        datos_finales_display[nombre_hoja] = {
+            "MODELO": modelo, "PLAN": plan, "MODELO_SIGUIENTE": modelo_siguiente,
+            "PROD1": prod1, "FALTAN1": plan - prod1,
+            "PROD_EMB": prod_emb, "FALTAN_EMB": plan - prod_emb,
+            "PROD_ACC": prod_acc, "FALTAN_ACC": plan - prod_acc,
+            "MICRO_LOTE_INFO": micro_lote_activo_info
+        }
     return datos_finales_display
 
 # --- 3. CLASE DE LA INTERFAZ GRÁFICA (TKINTER) ---
@@ -206,16 +195,14 @@ class VentanaInfo(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Tablero de Faltantes")
-        self.geometry("700x650")
+        self.geometry("800x750")
         self.attributes("-topmost", True)
         self.configure(bg="black")
-        self.initial_width = 700
-        self.initial_height = 650
+        self.initial_width, self.initial_height = 800, 750
         self.bind("<Configure>", self.on_resize)
         self.container = tk.Frame(self, bg="black")
         self.container.pack(expand=True, fill="both", padx=5, pady=5)
-        self.datos_display = {}
-        self.ui_elements = {}
+        self.datos_display, self.ui_elements = {}, {}
         self.secciones = ["LCD6", "LCD8", "CELDA 1", "CELDA 2"]
         threading.Thread(target=login_jmmes, daemon=True).start()
         time.sleep(2)
@@ -231,7 +218,6 @@ class VentanaInfo(tk.Tk):
         for i, seccion in enumerate(self.secciones):
             frame = tk.LabelFrame(self.container, text=seccion, font=("Arial", 14, "bold"), bg="#333333", fg="white", padx=10, pady=10)
             frame.grid(row=i//2, column=i%2, sticky="nsew", padx=5, pady=5)
-            self.ui_elements[f"{seccion}_FRAME"] = frame
             
             lbl_m_modelo = ttk.Label(frame, text="Montaje: ---", font=("Arial", 12, "bold"), background="#333333", foreground="cyan")
             lbl_m_modelo.pack(anchor="w")
@@ -244,6 +230,13 @@ class VentanaInfo(tk.Tk):
             lbl_m_prod_emb.pack(anchor="w", pady=(5,0))
             lbl_m_faltan_emb = ttk.Label(frame, font=("Arial", 11, "bold"), background="#333333", foreground="yellow")
             lbl_m_faltan_emb.pack(anchor="w")
+
+            sep_lote = ttk.Separator(frame, orient='horizontal')
+            sep_lote.pack(fill='x', pady=5)
+            lbl_lote_po = ttk.Label(frame, text="Lote / PO: --- / ---", font=("Arial", 10, "bold"), background="#333333", foreground="white")
+            lbl_lote_po.pack(anchor="w")
+            lbl_lote_faltan = ttk.Label(frame, text="Faltan del Lote: ---", font=("Arial", 10, "bold"), background="#333333", foreground="orange")
+            lbl_lote_faltan.pack(anchor="w")
             
             ttk.Separator(frame, orient='horizontal').pack(fill='x', pady=10)
             
@@ -262,6 +255,7 @@ class VentanaInfo(tk.Tk):
             self.ui_elements[seccion] = {
                 "MONTAJE_MODELO": lbl_m_modelo, "MONTAJE_PROD1": lbl_m_prod1, "MONTAJE_FALTAN1": lbl_m_faltan1,
                 "MONTAJE_PROD_EMB": lbl_m_prod_emb, "MONTAJE_FALTAN_EMB": lbl_m_faltan_emb,
+                "SEP_LOTE": sep_lote, "LOTE_PO": lbl_lote_po, "LOTE_FALTAN": lbl_lote_faltan,
                 "ACC_MODELO": lbl_a_modelo, "ACC_PROD": lbl_a_prod, "ACC_FALTAN": lbl_a_faltan,
                 "SIGUIENTE_MODELO": lbl_siguiente
             }
@@ -271,6 +265,7 @@ class VentanaInfo(tk.Tk):
         new_frame_font_size = max(10, int(14 * scale))
         new_model_font_size = max(9, int(12 * scale))
         new_data_font_size = max(8, int(11 * scale))
+        new_lote_font_size = max(8, int(10 * scale))
         new_next_font_size = max(7, int(10 * scale))
         for element in self.ui_elements.values():
             if isinstance(element, tk.LabelFrame): element.config(font=("Arial", new_frame_font_size, "bold"))
@@ -281,6 +276,8 @@ class VentanaInfo(tk.Tk):
                 element["MONTAJE_FALTAN1"].config(font=("Arial", new_data_font_size, "bold"))
                 element["MONTAJE_PROD_EMB"].config(font=("Arial", new_data_font_size, "normal"))
                 element["MONTAJE_FALTAN_EMB"].config(font=("Arial", new_data_font_size, "bold"))
+                element["LOTE_PO"].config(font=("Arial", new_lote_font_size, "bold"))
+                element["LOTE_FALTAN"].config(font=("Arial", new_lote_font_size, "bold"))
                 element["ACC_PROD"].config(font=("Arial", new_data_font_size, "normal"))
                 element["ACC_FALTAN"].config(font=("Arial", new_data_font_size, "bold"))
                 element["SIGUIENTE_MODELO"].config(font=("Arial", new_next_font_size, "italic"))
@@ -296,8 +293,7 @@ class VentanaInfo(tk.Tk):
                 elements["MONTAJE_PROD1"].config(text=f"Producidos (Est. 1): {datos['PROD1']}")
                 elements["MONTAJE_FALTAN1"].config(text=f"Faltan (Est. 1): {datos['FALTAN1']}")
                 
-                linea_m_ref = f"{seccion} - Montaje"
-                if "estacion_embalaje" in LINE_MAP.get(linea_m_ref, {}):
+                if "estacion_embalaje" in LINE_MAP.get(f"{seccion} - Montaje", {}):
                     elements["MONTAJE_PROD_EMB"].pack(anchor="w", pady=(5,0))
                     elements["MONTAJE_FALTAN_EMB"].pack(anchor="w")
                     elements["MONTAJE_PROD_EMB"].config(text=f"Producidos (Emb.): {datos['PROD_EMB']}")
@@ -305,6 +301,14 @@ class VentanaInfo(tk.Tk):
                 else:
                     elements["MONTAJE_PROD_EMB"].pack_forget()
                     elements["MONTAJE_FALTAN_EMB"].pack_forget()
+
+                micro_lote = datos.get("MICRO_LOTE_INFO", {})
+                if micro_lote:
+                    elements["LOTE_PO"].config(text=f"Lote / PO: {micro_lote.get('LOTE', 'N/A')} / {micro_lote.get('PO', 'N/A')}")
+                    elements["LOTE_FALTAN"].config(text=f"Faltan del Lote: {micro_lote.get('FALTAN_LOTE', 'N/A')}")
+                else:
+                    elements["LOTE_PO"].config(text="Lote / PO: ---")
+                    elements["LOTE_FALTAN"].config(text="Faltan del Lote: ---")
 
                 elements["ACC_MODELO"].config(text=f"Accesorios: {datos['MODELO']}")
                 elements["ACC_PROD"].config(text=f"Producidos: {datos['PROD_ACC']}")
@@ -319,15 +323,11 @@ class VentanaInfo(tk.Tk):
     def ciclo_de_actualizacion(self):
         while True:
             try:
-                #logging.info("Iniciando ciclo de actualización de datos...")
+                logging.info("Iniciando ciclo de actualización de datos...")
                 nuevos_datos = obtener_datos_para_display()
-                if nuevos_datos != self.datos_display:
-                    self.datos_display = nuevos_datos
-                    #logging.info(f"Nuevos datos de planificación encontrados: {self.datos_display}")
-                    self.after(0, self.actualizar_textos_ui)
-                else:
-                    #logging.info("No hay cambios en la planificación activa. Refrescando datos de producción...")
-                    self.after(0, self.actualizar_textos_ui)
+                self.datos_display = nuevos_datos
+                #logging.info(f"Nuevos datos de planificación: {self.datos_display}")
+                self.after(0, self.actualizar_textos_ui)
             except Exception as e:
                 logging.error(f"Error en el ciclo de actualización: {e}", exc_info=True)
             time.sleep(30)
@@ -336,7 +336,6 @@ class VentanaInfo(tk.Tk):
         thread = threading.Thread(target=self.ciclo_de_actualizacion, daemon=True)
         thread.start()
 
-# --- 4. PUNTO DE ENTRADA DE LA APLICACIÓN ---
 if __name__ == "__main__":
     app = VentanaInfo()
     app.mainloop()
