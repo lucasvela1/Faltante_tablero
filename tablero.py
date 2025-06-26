@@ -25,6 +25,7 @@ LINE_MAP = {
     "CELDA 2 - Montaje":    { "id": 82, "estacion": "pantalla - placas - técnica ó hermanado Placa - pantalla" },
     "CELDA 2 - Accesorios": { "id": 83, "estacion": "balanza ó puesto 1" }
 }
+#Cada línea esta mapeada a su ID para hacer la consulta a la api, su primer puesto y su puesto de embalaje
 
 X_XSRF_TOKEN, TOKEN, COOKIE = "", "", ""
 
@@ -48,7 +49,6 @@ def encontrar_todos_los_lotes(ruta_archivo, nombre_hoja):
         df[col_fecha] = pd.to_datetime(df[col_fecha], errors='coerce')
         df.dropna(subset=[col_fecha, 'Modelo'], inplace=True)
 
-        # --- CORRECCIÓN CLAVE: ORDENAR EL DATAFRAME POR FECHA ---
         # Esto asegura que el plan de producción siempre está en orden cronológico.
         df.sort_values(by=col_fecha, inplace=True, kind='mergesort')
         df.reset_index(inplace=True, drop=True)
@@ -95,7 +95,7 @@ def login_jmmes():
         logging.error(f"Fallo en el login: {e}")
         return False
 
-def get_product_id(modelo, line_id):
+def get_product_id(modelo, line_id): #Con el nombre del modelo y a qué línea pertenece, devuelve el ID del producto.
     if not TOKEN: return None
     url = f"{API_MES}/api/Products/GetByNameAndLineId/{modelo}/{line_id}"
     headers = {"X-XSRF-TOKEN": X_XSRF_TOKEN, "token": TOKEN}
@@ -105,7 +105,7 @@ def get_product_id(modelo, line_id):
         return None
     except requests.exceptions.RequestException: return None
 
-def get_produced_quantity(product_id, line_id, fecha_inicio, line_name, station_key_name):
+def get_produced_quantity(product_id, line_id, fecha_inicio, line_name, station_key_name): #Con el ID del producto, la línea y la fecha de inicio, devuelve la cantidad producida.
     if not TOKEN: return 0
     headers = {"X-XSRF-TOKEN": X_XSRF_TOKEN, "token": TOKEN}
     fecha_fin = datetime.now().strftime("%d-%m-%Y %H:%M").replace(" ", "%20")
@@ -129,12 +129,11 @@ def get_produced_quantity(product_id, line_id, fecha_inicio, line_name, station_
 
 def obtener_datos_para_display():
     datos_finales_display = {}
-    for nombre_hoja in NOMBRES_HOJAS:
+    for nombre_hoja in NOMBRES_HOJAS: #Recorremos cada hoja de Excel (Lcd6, lcd8, celda 1, celda 2).
         todos_los_lotes = encontrar_todos_los_lotes(RUTA_EXCEL, nombre_hoja)
         if not todos_los_lotes: continue
 
         # 1. Encontrar el índice del último lote planificado para hoy o una fecha anterior.
-        #    Gracias al ordenamiento, este índice es ahora 100% fiable.
         indice_teorico = -1
         for i, lote in enumerate(todos_los_lotes):
             fecha_lote = datetime.strptime(lote["FECHA_INICIO"], '%d-%m-%Y').date()
@@ -196,7 +195,6 @@ def obtener_datos_para_display():
         modelo_siguiente = todos_los_lotes[indice_activo + 1]["MODELO"] if indice_activo + 1 < len(todos_los_lotes) else "---"
         modelo, plan, fecha_inicio = lote_activo["MODELO"], lote_activo["PRODUCCION_TOTAL"], lote_activo["FECHA_INICIO"]
         
-        # ... El resto de la función para obtener prod_emb, prod_acc y compilar datos_finales_display ...
         linea_m, line_id_m = f"{nombre_hoja} - Montaje", LINE_MAP.get(f"{nombre_hoja} - Montaje", {}).get("id")
         linea_a, line_id_a = f"{nombre_hoja} - Accesorios", LINE_MAP.get(f"{nombre_hoja} - Accesorios", {}).get("id")
         prod_emb, prod_acc = 0, 0
@@ -226,7 +224,7 @@ def obtener_datos_para_display():
             "PROD1": prod1_activo, "FALTAN1": plan - prod1_activo,
             "PROD_EMB": prod_emb, "FALTAN_EMB": plan - prod_emb,
             "PROD_ACC": prod_acc, "FALTAN_ACC": plan - prod_acc,
-            "MICRO_LOTE_INFO": micro_lote_activo_info
+            "MICRO_LOTE_INFO": micro_lote_activo_info 
         }
     return datos_finales_display
 
@@ -304,7 +302,6 @@ class VentanaInfo(tk.Tk):
             }
 
     def on_resize(self, event):
-        # Esta función puede ser sensible a ejecuciones tempranas, la protegemos.
         if not hasattr(self, 'initial_width') or not self.ui_elements:
             return
             
@@ -316,7 +313,6 @@ class VentanaInfo(tk.Tk):
         new_next_font_size = max(7, int(10 * scale))
 
         for seccion, elements in self.ui_elements.items():
-            # El frame mismo es un LabelFrame, accedido por su clave en un nivel superior
             frame_widget = self.container.nametowidget(elements["MONTAJE_MODELO"].winfo_parent())
             if isinstance(frame_widget, tk.LabelFrame):
                 frame_widget.config(font=("Arial", new_frame_font_size, "bold"))
