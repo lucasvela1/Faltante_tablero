@@ -42,13 +42,15 @@ def encontrar_todos_los_lotes(ruta_archivo, nombre_hoja):
         columnas_requeridas = [col_fecha, 'Modelo', 'Cant', 'Lote', 'PO']
         
         if not all(col in df.columns for col in columnas_requeridas):
-            logging.warning(f"La hoja '{nombre_hoja}' no tiene todas las columnas requeridas.")
-            logging.warning(f"Se necesitan: {columnas_requeridas}")
-            logging.warning(f"Se encontraron: {list(df.columns)}")
+            logging.warning(f"La hoja '{nombre_hoja}' no tiene las columnas requeridas: {columnas_requeridas}")
             return []
             
         df[col_fecha] = pd.to_datetime(df[col_fecha], errors='coerce')
         df.dropna(subset=[col_fecha, 'Modelo'], inplace=True)
+
+        # --- CORRECCIÓN CLAVE: ORDENAR EL DATAFRAME POR FECHA ---
+        # Esto asegura que el plan de producción siempre está en orden cronológico.
+        df.sort_values(by=col_fecha, inplace=True, kind='mergesort')
         df.reset_index(inplace=True, drop=True)
         
         macro_lotes = []
@@ -89,7 +91,9 @@ def login_jmmes():
         r.raise_for_status()
         TOKEN = r.json().get("token", "")
         return bool(TOKEN)
-    except requests.exceptions.RequestException: return False
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Fallo en el login: {e}")
+        return False
 
 def get_product_id(modelo, line_id):
     if not TOKEN: return None
@@ -129,50 +133,86 @@ def obtener_datos_para_display():
         todos_los_lotes = encontrar_todos_los_lotes(RUTA_EXCEL, nombre_hoja)
         if not todos_los_lotes: continue
 
+        # 1. Encontrar el índice del último lote planificado para hoy o una fecha anterior.
+        #    Gracias al ordenamiento, este índice es ahora 100% fiable.
         indice_teorico = -1
-        fecha_mas_cercana = datetime.min
         for i, lote in enumerate(todos_los_lotes):
-            fecha_lote = datetime.strptime(lote["FECHA_INICIO"], '%d-%m-%Y')
-            if fecha_lote.date() <= datetime.now().date() and fecha_lote >= fecha_mas_cercana:
-                fecha_mas_cercana = fecha_lote
+            fecha_lote = datetime.strptime(lote["FECHA_INICIO"], '%d-%m-%Y').date()
+            if fecha_lote <= datetime.now().date():
                 indice_teorico = i
         
         if indice_teorico == -1: continue
 
-        lote_teorico = todos_los_lotes[indice_teorico]
-        linea_m_teorica = f"{nombre_hoja} - Montaje"
-        line_id_m_teorico = LINE_MAP.get(linea_m_teorica, {}).get("id")
-        producido_teorico = 0
-        if line_id_m_teorico:
-            product_id_teorico = get_product_id(lote_teorico["MODELO"], line_id_m_teorico)
-            if product_id_teorico:
-                producido_teorico = get_produced_quantity(product_id_teorico, line_id_m_teorico, lote_teorico["FECHA_INICIO"], linea_m_teorica, "estacion")
-
-        indice_activo = indice_teorico
-        if producido_teorico == 0 and indice_teorico > 0:
-            indice_activo = indice_teorico - 1
+        # 2. Búsqueda con prioridades para encontrar el lote verdaderamente activo.
+        indice_activo = -1
+        prod1_activo = 0
         
+        # Candidatos:
+        indice_lote_en_progreso = -1
+        prod1_lote_en_progreso = 0
+        indice_lote_planeado = -1
+
+        for i in range(indice_teorico, -1, -1):
+            lote_candidato = todos_los_lotes[i]
+            plan_candidato = lote_candidato.get("PRODUCCION_TOTAL", 0)
+            if plan_candidato == 0: continue
+
+            linea_m_candidata = f"{nombre_hoja} - Montaje"
+            line_id_m_candidato = LINE_MAP.get(linea_m_candidata, {}).get("id")
+            if not line_id_m_candidato: continue
+            
+            product_id_candidato = get_product_id(lote_candidato["MODELO"], line_id_m_candidato)
+            if not product_id_candidato: continue
+
+            producido_candidato = get_produced_quantity(product_id_candidato, line_id_m_candidato, lote_candidato["FECHA_INICIO"], linea_m_candidata, "estacion")
+
+            if producido_candidato < plan_candidato:
+                # PRIORIDAD 1: ¿El lote ya empezó?
+                if producido_candidato > 0:
+                    indice_lote_en_progreso = i
+                    prod1_lote_en_progreso = producido_candidato
+                    break # Encontramos el más importante, no necesitamos buscar más.
+                
+                # PRIORIDAD 2: ¿Es un lote planeado sin empezar?
+                elif producido_candidato == 0 and indice_lote_planeado == -1:
+                    # Solo guardamos el primero que encontramos (el más reciente).
+                    indice_lote_planeado = i
+        
+        # 3. Decidir cuál lote mostrar según las prioridades.
+        if indice_lote_en_progreso != -1:
+            indice_activo = indice_lote_en_progreso
+            prod1_activo = prod1_lote_en_progreso
+            logging.info(f"Mostrando lote EN PROGRESO para '{nombre_hoja}': {todos_los_lotes[indice_activo]['MODELO']}")
+        elif indice_lote_planeado != -1:
+            indice_activo = indice_lote_planeado
+            prod1_activo = 0
+            logging.info(f"Mostrando lote PLANEADO para '{nombre_hoja}': {todos_los_lotes[indice_activo]['MODELO']}")
+        else:
+            indice_activo = indice_teorico # Fallback: todos los lotes pasados están completos.
+            logging.warning(f"No se encontró lote activo para '{nombre_hoja}', mostrando el último teórico.")
+
+        # 4. Preparar los datos para mostrar.
         lote_activo = todos_los_lotes[indice_activo]
         modelo_siguiente = todos_los_lotes[indice_activo + 1]["MODELO"] if indice_activo + 1 < len(todos_los_lotes) else "---"
-
         modelo, plan, fecha_inicio = lote_activo["MODELO"], lote_activo["PRODUCCION_TOTAL"], lote_activo["FECHA_INICIO"]
+        
+        # ... El resto de la función para obtener prod_emb, prod_acc y compilar datos_finales_display ...
         linea_m, line_id_m = f"{nombre_hoja} - Montaje", LINE_MAP.get(f"{nombre_hoja} - Montaje", {}).get("id")
         linea_a, line_id_a = f"{nombre_hoja} - Accesorios", LINE_MAP.get(f"{nombre_hoja} - Accesorios", {}).get("id")
-        
-        prod1, prod_emb, prod_acc = 0, 0, 0
+        prod_emb, prod_acc = 0, 0
         micro_lote_activo_info = {}
+
         if line_id_m:
             product_id = get_product_id(modelo, line_id_m)
             if product_id:
-                prod1 = get_produced_quantity(product_id, line_id_m, fecha_inicio, linea_m, "estacion")
                 if "estacion_embalaje" in LINE_MAP.get(linea_m, {}):
                     prod_emb = get_produced_quantity(product_id, line_id_m, fecha_inicio, linea_m, "estacion_embalaje")
                 
                 cantidad_acumulada = 0
                 for micro_lote in lote_activo["MICRO_LOTES"]:
                     cantidad_acumulada += int(micro_lote.get('Cant', 0) or 0)
-                    if prod1 < cantidad_acumulada:
-                        faltante_micro_lote = cantidad_acumulada - prod1
+                    if prod1_activo < cantidad_acumulada:
+                        faltante_micro_lote = cantidad_acumulada - prod1_activo
                         micro_lote_activo_info = {"LOTE": micro_lote['Lote'], "PO": micro_lote['PO'], "FALTAN_LOTE": faltante_micro_lote}
                         break
         
@@ -183,7 +223,7 @@ def obtener_datos_para_display():
         
         datos_finales_display[nombre_hoja] = {
             "MODELO": modelo, "PLAN": plan, "MODELO_SIGUIENTE": modelo_siguiente,
-            "PROD1": prod1, "FALTAN1": plan - prod1,
+            "PROD1": prod1_activo, "FALTAN1": plan - prod1_activo,
             "PROD_EMB": prod_emb, "FALTAN_EMB": plan - prod_emb,
             "PROD_ACC": prod_acc, "FALTAN_ACC": plan - prod_acc,
             "MICRO_LOTE_INFO": micro_lote_activo_info
@@ -204,8 +244,11 @@ class VentanaInfo(tk.Tk):
         self.container.pack(expand=True, fill="both", padx=5, pady=5)
         self.datos_display, self.ui_elements = {}, {}
         self.secciones = ["LCD6", "LCD8", "CELDA 1", "CELDA 2"]
-        threading.Thread(target=login_jmmes, daemon=True).start()
-        time.sleep(2)
+        
+        login_thread = threading.Thread(target=login_jmmes, daemon=True)
+        login_thread.start()
+        login_thread.join(timeout=5) # Esperar un máximo de 5 segundos a que el login termine
+        
         self.construir_interfaz()
         self.actualizar_datos_en_hilo()
 
@@ -261,26 +304,34 @@ class VentanaInfo(tk.Tk):
             }
 
     def on_resize(self, event):
+        # Esta función puede ser sensible a ejecuciones tempranas, la protegemos.
+        if not hasattr(self, 'initial_width') or not self.ui_elements:
+            return
+            
         scale = min(self.winfo_width() / self.initial_width, self.winfo_height() / self.initial_height)
         new_frame_font_size = max(10, int(14 * scale))
         new_model_font_size = max(9, int(12 * scale))
         new_data_font_size = max(8, int(11 * scale))
         new_lote_font_size = max(8, int(10 * scale))
         new_next_font_size = max(7, int(10 * scale))
-        for element in self.ui_elements.values():
-            if isinstance(element, tk.LabelFrame): element.config(font=("Arial", new_frame_font_size, "bold"))
-            elif isinstance(element, dict):
-                element["MONTAJE_MODELO"].config(font=("Arial", new_model_font_size, "bold"))
-                element["ACC_MODELO"].config(font=("Arial", new_model_font_size, "bold"))
-                element["MONTAJE_PROD1"].config(font=("Arial", new_data_font_size, "normal"))
-                element["MONTAJE_FALTAN1"].config(font=("Arial", new_data_font_size, "bold"))
-                element["MONTAJE_PROD_EMB"].config(font=("Arial", new_data_font_size, "normal"))
-                element["MONTAJE_FALTAN_EMB"].config(font=("Arial", new_data_font_size, "bold"))
-                element["LOTE_PO"].config(font=("Arial", new_lote_font_size, "bold"))
-                element["LOTE_FALTAN"].config(font=("Arial", new_lote_font_size, "bold"))
-                element["ACC_PROD"].config(font=("Arial", new_data_font_size, "normal"))
-                element["ACC_FALTAN"].config(font=("Arial", new_data_font_size, "bold"))
-                element["SIGUIENTE_MODELO"].config(font=("Arial", new_next_font_size, "italic"))
+
+        for seccion, elements in self.ui_elements.items():
+            # El frame mismo es un LabelFrame, accedido por su clave en un nivel superior
+            frame_widget = self.container.nametowidget(elements["MONTAJE_MODELO"].winfo_parent())
+            if isinstance(frame_widget, tk.LabelFrame):
+                frame_widget.config(font=("Arial", new_frame_font_size, "bold"))
+
+            elements["MONTAJE_MODELO"].config(font=("Arial", new_model_font_size, "bold"))
+            elements["ACC_MODELO"].config(font=("Arial", new_model_font_size, "bold"))
+            elements["MONTAJE_PROD1"].config(font=("Arial", new_data_font_size, "normal"))
+            elements["MONTAJE_FALTAN1"].config(font=("Arial", new_data_font_size, "bold"))
+            elements["MONTAJE_PROD_EMB"].config(font=("Arial", new_data_font_size, "normal"))
+            elements["MONTAJE_FALTAN_EMB"].config(font=("Arial", new_data_font_size, "bold"))
+            elements["LOTE_PO"].config(font=("Arial", new_lote_font_size, "bold"))
+            elements["LOTE_FALTAN"].config(font=("Arial", new_lote_font_size, "bold"))
+            elements["ACC_PROD"].config(font=("Arial", new_data_font_size, "normal"))
+            elements["ACC_FALTAN"].config(font=("Arial", new_data_font_size, "bold"))
+            elements["SIGUIENTE_MODELO"].config(font=("Arial", new_next_font_size, "italic"))
 
     def actualizar_textos_ui(self):
         for seccion, elements in self.ui_elements.items():
@@ -303,7 +354,7 @@ class VentanaInfo(tk.Tk):
                     elements["MONTAJE_FALTAN_EMB"].pack_forget()
 
                 micro_lote = datos.get("MICRO_LOTE_INFO", {})
-                if micro_lote:
+                if micro_lote and micro_lote.get("LOTE") is not None:
                     elements["LOTE_PO"].config(text=f"Lote / PO: {micro_lote.get('LOTE', 'N/A')} / {micro_lote.get('PO', 'N/A')}")
                     elements["LOTE_FALTAN"].config(text=f"Faltan del Lote: {micro_lote.get('FALTAN_LOTE', 'N/A')}")
                 else:
@@ -326,7 +377,6 @@ class VentanaInfo(tk.Tk):
                 logging.info("Iniciando ciclo de actualización de datos...")
                 nuevos_datos = obtener_datos_para_display()
                 self.datos_display = nuevos_datos
-                #logging.info(f"Nuevos datos de planificación: {self.datos_display}")
                 self.after(0, self.actualizar_textos_ui)
             except Exception as e:
                 logging.error(f"Error en el ciclo de actualización: {e}", exc_info=True)
