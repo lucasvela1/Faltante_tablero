@@ -62,7 +62,7 @@ def encontrar_todos_los_lotes(ruta_archivo, nombre_hoja):
                 end_pos += 1
             
             lote_df = df.iloc[current_pos : end_pos + 1]
-            micro_lotes = lote_df[['Lote', 'PO', 'Cant']].to_dict('records')
+            micro_lotes = lote_df[['Lote', 'OP', 'Cant']].to_dict('records')
 
             macro_lotes.append({
                 "MODELO": modelo_actual,
@@ -211,7 +211,7 @@ def obtener_datos_para_display():
                     cantidad_acumulada += int(micro_lote.get('Cant', 0) or 0)
                     if prod1_activo < cantidad_acumulada:
                         faltante_micro_lote = cantidad_acumulada - prod1_activo
-                        micro_lote_activo_info = {"LOTE": micro_lote['Lote'], "PO": micro_lote['PO'], "FALTAN_LOTE": faltante_micro_lote}
+                        micro_lote_activo_info = {"LOTE": micro_lote['Lote'], "OP": micro_lote['OP'], "FALTAN_LOTE": faltante_micro_lote}
                         break
         
         if line_id_a:
@@ -274,8 +274,8 @@ class VentanaInfo(tk.Tk):
 
             sep_lote = ttk.Separator(frame, orient='horizontal')
             sep_lote.pack(fill='x', pady=5)
-            lbl_lote_po = ttk.Label(frame, text="Lote / PO: --- / ---", font=("Arial", 10, "bold"), background="#333333", foreground="white")
-            lbl_lote_po.pack(anchor="w")
+            lbl_lote_op = ttk.Label(frame, text="Lote / OP: --- / ---", font=("Arial", 10, "bold"), background="#333333", foreground="white")
+            lbl_lote_op.pack(anchor="w")
             lbl_lote_faltan = ttk.Label(frame, text="Faltan del Lote: ---", font=("Arial", 10, "bold"), background="#333333", foreground="orange")
             lbl_lote_faltan.pack(anchor="w")
             
@@ -296,7 +296,7 @@ class VentanaInfo(tk.Tk):
             self.ui_elements[seccion] = {
                 "MONTAJE_MODELO": lbl_m_modelo, "MONTAJE_PROD1": lbl_m_prod1, "MONTAJE_FALTAN1": lbl_m_faltan1,
                 "MONTAJE_PROD_EMB": lbl_m_prod_emb, "MONTAJE_FALTAN_EMB": lbl_m_faltan_emb,
-                "SEP_LOTE": sep_lote, "LOTE_PO": lbl_lote_po, "LOTE_FALTAN": lbl_lote_faltan,
+                "SEP_LOTE": sep_lote, "LOTE_OP": lbl_lote_op, "LOTE_FALTAN": lbl_lote_faltan,
                 "ACC_MODELO": lbl_a_modelo, "ACC_PROD": lbl_a_prod, "ACC_FALTAN": lbl_a_faltan,
                 "SIGUIENTE_MODELO": lbl_siguiente
             }
@@ -323,7 +323,7 @@ class VentanaInfo(tk.Tk):
             elements["MONTAJE_FALTAN1"].config(font=("Arial", new_data_font_size, "bold"))
             elements["MONTAJE_PROD_EMB"].config(font=("Arial", new_data_font_size, "normal"))
             elements["MONTAJE_FALTAN_EMB"].config(font=("Arial", new_data_font_size, "bold"))
-            elements["LOTE_PO"].config(font=("Arial", new_lote_font_size, "bold"))
+            elements["LOTE_OP"].config(font=("Arial", new_lote_font_size, "bold"))
             elements["LOTE_FALTAN"].config(font=("Arial", new_lote_font_size, "bold"))
             elements["ACC_PROD"].config(font=("Arial", new_data_font_size, "normal"))
             elements["ACC_FALTAN"].config(font=("Arial", new_data_font_size, "bold"))
@@ -351,10 +351,10 @@ class VentanaInfo(tk.Tk):
 
                 micro_lote = datos.get("MICRO_LOTE_INFO", {})
                 if micro_lote and micro_lote.get("LOTE") is not None:
-                    elements["LOTE_PO"].config(text=f"Lote / PO: {micro_lote.get('LOTE', 'N/A')} / {micro_lote.get('PO', 'N/A')}")
+                    elements["LOTE_OP"].config(text=f"Lote / OP: {micro_lote.get('LOTE', 'N/A')} / {micro_lote.get('OP', 'N/A')}")
                     elements["LOTE_FALTAN"].config(text=f"Faltan del Lote: {micro_lote.get('FALTAN_LOTE', 'N/A')}")
                 else:
-                    elements["LOTE_PO"].config(text="Lote / PO: ---")
+                    elements["LOTE_OP"].config(text="Lote / OP: ---")
                     elements["LOTE_FALTAN"].config(text="Faltan del Lote: ---")
 
                 elements["ACC_MODELO"].config(text=f"Accesorios: {datos['MODELO']}")
