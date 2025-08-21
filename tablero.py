@@ -3,27 +3,34 @@ from tkinter import ttk, font
 import pandas as pd
 import requests
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import threading
 import time
 import logging
+import warnings
 
-# --- 1. CONFIGURACIÓN Y CONSTANTES GLOBALES ---
+# --- 0. CONFIGURACIÓN INICIAL ---
+# Oculta advertencias de openpyxl sobre el formato condicional no soportado
+warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [%(funcName)s] %(message)s')
 
+
+# --- 1. CONFIGURACIÓN Y CONSTANTES GLOBALES ---
 API_MES = "http://mes.newsan.com.ar"
-RUTA_EXCEL = r'\\ush-nt-3\v1\infprod\PLAN_PRO\Programas de producción x planta\Programa P5 - 2025.xlsx'
-NOMBRES_HOJAS = ['LCD6', 'LCD8', 'CELDA 1', 'CELDA 2']
+RUTA_EXCEL = r'\\ush-nt-3\v1\infprod\PLAN_PRO\Programas de producción x planta\Programa P5 - 2025.xlsx' #La r es para leer el String "raw"
+NOMBRES_HOJAS = ['LCD6', 'LCD8', 'CELDA 1', 'CELDA 2', 'CELDA 3'] #Nombres de las hojas en el Excel
 
 LINE_MAP = {
-    "LCD6 - Montaje":       { "id": 3, "estacion": "hermanado placa - pantalla", "estacion_embalaje": "Embalaje" },
-    "LCD6 - Accesorios":    { "id": 14, "estacion": "puesto 1" },
-    "LCD8 - Montaje":       { "id": 10, "estacion": "pantalla - placa 1", "estacion_embalaje": "Embalaje" },
-    "LCD8 - Accesorios":    { "id": 9, "estacion": "balanza ó puesto 1" },
-    "CELDA 1 - Montaje":    { "id": 13, "estacion": "pantalla - placa 1 ó pantalla - placa 1 ó pantalla - placas - técnica ó hermanado placa - pantalla" },
-    "CELDA 1 - Accesorios": { "id": 12, "estacion": "balanza ó puesto 1" },
-    "CELDA 2 - Montaje":    { "id": 82, "estacion": "pantalla - placas - técnica ó hermanado Placa - pantalla" },
-    "CELDA 2 - Accesorios": { "id": 83, "estacion": "balanza ó puesto 1" }
+    "LCD6 - Montaje":      { "id": 3, "estacion": "hermanado placa - pantalla", "estacion_embalaje": "Embalaje" },
+    "LCD6 - Accesorios":   { "id": 14, "estacion": "puesto 1" },
+    "LCD8 - Montaje":      { "id": 10, "estacion": "pantalla - placa 1", "estacion_embalaje": "Embalaje" },
+    "LCD8 - Accesorios":   { "id": 9, "estacion": "balanza ó puesto 1" },
+    "CELDA 1 - Montaje":   { "id": 13, "estacion": "pantalla - placa 1 ó pantalla - placa 1 ó pantalla - placas - técnica ó hermanado placa - pantalla" },
+    "CELDA 1 - Accesorios":{ "id": 12, "estacion": "balanza ó puesto 1" },
+    "CELDA 2 - Montaje":   { "id": 82, "estacion": "pantalla - placas - técnica ó hermanado Placa - pantalla" },
+    "CELDA 2 - Accesorios":{ "id": 83, "estacion": "balanza ó puesto 1" },
+    "CELDA 3 - Montaje":   { "id": 103, "estacion": "pantalla - placas - técnica ó hermanado Placa - pantalla" },
+    "CELDA 3 - Accesorios":{ "id": 104, "estacion": "balanza ó puesto 1" }
 }
 #Cada línea esta mapeada a su ID para hacer la consulta a la api, su primer puesto y su puesto de embalaje
 
@@ -33,20 +40,20 @@ X_XSRF_TOKEN, TOKEN, COOKIE = "", "", ""
 
 def encontrar_todos_los_lotes(ruta_archivo, nombre_hoja):
     try:
-        df = pd.read_excel(ruta_archivo, sheet_name=nombre_hoja, header=14)
-        df.columns = df.columns.str.replace(r'\s+', ' ', regex=True).str.strip()
+        df = pd.read_excel(ruta_archivo, sheet_name=nombre_hoja, header=14) #Con pandas leemos el Excel, la cabecera empieza en la fila 14, y busca el archivo en la dirección que le pasamos
+        df.columns = df.columns.str.replace(r'\s+', ' ', regex=True).str.strip() #Normalizamos, esto elimina dobles espacios y espacios al principio o final de los nombres de columnas.
         
         if 'Cant.' in df.columns:
-            df.rename(columns={'Cant.': 'Cant'}, inplace=True)
+            df.rename(columns={'Cant.': 'Cant'}, inplace=True) #Si encuentra la columa Cant. la renombra sin punto
 
         col_fecha = 'Fecha Ing. Produccion'
         columnas_requeridas = [col_fecha, 'Modelo', 'Cant', 'Lote', 'PO']
         
         if not all(col in df.columns for col in columnas_requeridas):
             logging.warning(f"La hoja '{nombre_hoja}' no tiene las columnas requeridas: {columnas_requeridas}")
-            return []
+            return [] #Comprobamos que las columnas requeridas existen, si no, devolvemos una lista vacía.
             
-        df[col_fecha] = pd.to_datetime(df[col_fecha], errors='coerce')
+        df[col_fecha] = pd.to_datetime(df[col_fecha], errors='coerce') #Convertimos la fecha a un formato de fecha
         df.dropna(subset=[col_fecha, 'Modelo'], inplace=True)
 
         # Esto asegura que el plan de producción siempre está en orden cronológico.
@@ -56,18 +63,18 @@ def encontrar_todos_los_lotes(ruta_archivo, nombre_hoja):
         macro_lotes = []
         current_pos = 0
         while current_pos < len(df):
-            modelo_actual = df.iloc[current_pos]['Modelo']
+            modelo_actual = df.iloc[current_pos]['Modelo'] #Iloc es integer location para la fila, buscamos el valor en la columna modelo
             end_pos = current_pos
             while end_pos + 1 < len(df) and df.iloc[end_pos + 1]['Modelo'] == modelo_actual:
                 end_pos += 1
             
-            lote_df = df.iloc[current_pos : end_pos + 1]
-            micro_lotes = lote_df[['Lote', 'OP', 'Cant']].to_dict('records')
+            lote_df = df.iloc[current_pos : end_pos + 1] #Creamos un DataFrame con las filas del lote actual
+            micro_lotes = lote_df[['Lote', 'OP', 'Cant']].to_dict('records') #Lo convertimos a un diccionario de registros, cada registro es un micro lote con su Lote, OP y Cantidad.
 
             macro_lotes.append({
                 "MODELO": modelo_actual,
-                "FECHA_INICIO": lote_df[col_fecha].min().strftime('%d-%m-%Y'),
-                "PRODUCCION_TOTAL": int(lote_df['Cant'].fillna(0).clip(lower=0).sum()),
+                "FECHA_INICIO": lote_df[col_fecha].min().strftime('%d-%m-%Y'), #nos quedamos la más antigua
+                "PRODUCCION_TOTAL": int(lote_df['Cant'].fillna(0).clip(lower=0).sum()), #fillna(0) remplaza celdas vacías por 0. Clip(lower=0) evita números negativos.
                 "MICRO_LOTES": micro_lotes
             })
             current_pos = end_pos + 1
@@ -217,7 +224,10 @@ def obtener_datos_para_display():
         if line_id_a:
             product_id_acc = get_product_id(modelo, line_id_a)
             if product_id_acc:
-                prod_acc = get_produced_quantity(product_id_acc, line_id_a, fecha_inicio, linea_a, "estacion")
+                fecha_inicio_obj = datetime.strptime(fecha_inicio, '%d-%m-%Y')
+                fecha_inicio_accesorios = (fecha_inicio_obj - timedelta(days=1)).strftime('%d-%m-%Y') #Para los accesorios buscamos un día antes porque suelen arrancar antes que montaje
+                
+                prod_acc = get_produced_quantity(product_id_acc, line_id_a, fecha_inicio_accesorios, linea_a, "estacion")
         
         datos_finales_display[nombre_hoja] = {
             "MODELO": modelo, "PLAN": plan, "MODELO_SIGUIENTE": modelo_siguiente,
@@ -233,15 +243,15 @@ class VentanaInfo(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Tablero de Faltantes")
-        self.geometry("800x750")
+        self.geometry("1200x700") # <-- CAMBIO: Geometría para 3 columnas
         self.attributes("-topmost", True)
         self.configure(bg="black")
-        self.initial_width, self.initial_height = 800, 750
+        self.initial_width, self.initial_height = 1200, 700 # <-- CAMBIO
         self.bind("<Configure>", self.on_resize)
         self.container = tk.Frame(self, bg="black")
         self.container.pack(expand=True, fill="both", padx=5, pady=5)
         self.datos_display, self.ui_elements = {}, {}
-        self.secciones = ["LCD6", "LCD8", "CELDA 1", "CELDA 2"]
+        self.secciones = ["LCD6", "LCD8", "CELDA 1", "CELDA 2", "CELDA 3"]
         
         login_thread = threading.Thread(target=login_jmmes, daemon=True)
         login_thread.start()
@@ -253,12 +263,14 @@ class VentanaInfo(tk.Tk):
     def construir_interfaz(self):
         for widget in self.container.winfo_children(): widget.destroy()
         self.ui_elements.clear()
-        for i in range(2): self.container.grid_columnconfigure(i, weight=1)
+        
+        # 3 columnas y 2 filas
+        for i in range(3): self.container.grid_columnconfigure(i, weight=1)
         for i in range(2): self.container.grid_rowconfigure(i, weight=1)
 
         for i, seccion in enumerate(self.secciones):
             frame = tk.LabelFrame(self.container, text=seccion, font=("Arial", 14, "bold"), bg="#333333", fg="white", padx=10, pady=10)
-            frame.grid(row=i//2, column=i%2, sticky="nsew", padx=5, pady=5)
+            frame.grid(row=i//3, column=i%3, sticky="nsew", padx=5, pady=5)
             
             lbl_m_modelo = ttk.Label(frame, text="Montaje: ---", font=("Arial", 12, "bold"), background="#333333", foreground="cyan")
             lbl_m_modelo.pack(anchor="w")
