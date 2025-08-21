@@ -243,10 +243,10 @@ class VentanaInfo(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Tablero de Faltantes")
-        self.geometry("1200x700") # <-- CAMBIO: Geometría para 3 columnas
+        self.geometry("1200x700") 
         self.attributes("-topmost", True)
         self.configure(bg="black")
-        self.initial_width, self.initial_height = 1200, 700 # <-- CAMBIO
+        self.initial_width, self.initial_height = 1200, 700 
         self.bind("<Configure>", self.on_resize)
         self.container = tk.Frame(self, bg="black")
         self.container.pack(expand=True, fill="both", padx=5, pady=5)
