@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [%
 
 
 # --- 1. CONFIGURACIÓN Y CONSTANTES GLOBALES ---
-API_MES = "http://mes.newsan.com.ar"
+API_MES = "http://premes.newsan.com.ar"
 RUTA_EXCEL = r'\\ush-nt-3\v1\infprod\PLAN_PRO\Programas de producción x planta\Programa P5 - 2025.xlsx' #La r es para leer el String "raw"
 NOMBRES_HOJAS = ['LCD6', 'LCD8', 'CELDA 1', 'CELDA 2', 'CELDA 3'] #Nombres de las hojas en el Excel
 
