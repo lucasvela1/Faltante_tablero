@@ -206,6 +206,8 @@ def obtener_datos_para_display():
         linea_a, line_id_a = f"{nombre_hoja} - Accesorios", LINE_MAP.get(f"{nombre_hoja} - Accesorios", {}).get("id")
         prod_emb, prod_acc = 0, 0
         micro_lote_activo_info = {}
+        tiempo_restante_str = "--:--"
+
 
         if line_id_m:
             product_id = get_product_id(modelo, line_id_m)
@@ -213,6 +215,31 @@ def obtener_datos_para_display():
                 if "estacion_embalaje" in LINE_MAP.get(linea_m, {}):
                     prod_emb = get_produced_quantity(product_id, line_id_m, fecha_inicio, linea_m, "estacion_embalaje")
                 
+                now = datetime.now()
+                # El turno comienza a las 6:00 AM.
+                start_of_day = now.replace(hour=6, minute=0, second=0, microsecond=0)
+                
+                # Solo se calcula si la hora actual es posterior al inicio del turno.
+                if now > start_of_day:
+                    fecha_hoy = now.strftime('%d-%m-%Y')
+                    # Se obtiene la cantidad producida específicamente en el día de hoy.
+                    producido_hoy = get_produced_quantity(product_id, line_id_m, fecha_hoy, linea_m, "estacion")
+                    
+                    if producido_hoy > 0:
+                        faltan_total = plan - prod1_activo
+                        if faltan_total > 0:
+                            # Se calcula el tiempo transcurrido desde el inicio del turno en segundos.
+                            segundos_transcurridos_hoy = (now - start_of_day).total_seconds()
+                            # Regla de tres simple para obtener el ritmo de producción (segundos por unidad).
+                            segundos_por_unidad = segundos_transcurridos_hoy / producido_hoy
+                            # Se estima el tiempo total restante en segundos.
+                            segundos_restantes = faltan_total * segundos_por_unidad
+                            
+                            # Se convierte el resultado a un formato HH:MM más legible.
+                            horas = int(segundos_restantes // 3600)
+                            minutos = int((segundos_restantes % 3600) // 60)
+                            tiempo_restante_str = f"{horas:02d}:{minutos:02d}"
+
                 cantidad_acumulada = 0
                 for micro_lote in lote_activo["MICRO_LOTES"]:
                     cantidad_acumulada += int(micro_lote.get('Cant', 0) or 0)
@@ -234,7 +261,8 @@ def obtener_datos_para_display():
             "PROD1": prod1_activo, "FALTAN1": plan - prod1_activo,
             "PROD_EMB": prod_emb, "FALTAN_EMB": plan - prod_emb,
             "PROD_ACC": prod_acc, "FALTAN_ACC": plan - prod_acc,
-            "MICRO_LOTE_INFO": micro_lote_activo_info 
+            "MICRO_LOTE_INFO": micro_lote_activo_info,
+            "TIEMPO_RESTANTE": tiempo_restante_str 
         }
     return datos_finales_display
 
@@ -274,8 +302,18 @@ class VentanaInfo(tk.Tk):
             
             lbl_m_modelo = ttk.Label(frame, text="Montaje: ---", font=("Arial", 12, "bold"), background="#333333", foreground="cyan")
             lbl_m_modelo.pack(anchor="w")
-            lbl_m_prod1 = ttk.Label(frame, text="Producidos (Est. 1): ---", font=("Arial", 11, "normal"), background="#333333", foreground="white")
-            lbl_m_prod1.pack(anchor="w")
+            
+            ### NUEVO ### - Se crea un Frame para alinear 'Producidos' y 'Estimativo' en la misma línea.
+            prod_frame = tk.Frame(frame, bg="#333333")
+            prod_frame.pack(anchor="w", fill="x")
+
+            lbl_m_prod1 = ttk.Label(prod_frame, text="Producidos (Est. 1): ---", font=("Arial", 11, "normal"), background="#333333", foreground="white")
+            lbl_m_prod1.pack(side="left") # Se empaqueta a la izquierda del frame.
+
+            ### NUEVO ### - Se crea el nuevo Label para mostrar el tiempo estimado.
+            lbl_m_estimativo = ttk.Label(prod_frame, text="(Estim: --:--)", font=("Arial", 10, "italic"), background="#333333", foreground="gray")
+            lbl_m_estimativo.pack(side="left", padx=(10, 0)) # Se empaqueta al lado, con un pequeño padding.
+            
             lbl_m_faltan1 = ttk.Label(frame, text="Faltan (Est. 1): ---", font=("Arial", 11, "bold"), background="#333333", foreground="yellow")
             lbl_m_faltan1.pack(anchor="w")
             
@@ -310,7 +348,8 @@ class VentanaInfo(tk.Tk):
                 "MONTAJE_PROD_EMB": lbl_m_prod_emb, "MONTAJE_FALTAN_EMB": lbl_m_faltan_emb,
                 "SEP_LOTE": sep_lote, "LOTE_OP": lbl_lote_op, "LOTE_FALTAN": lbl_lote_faltan,
                 "ACC_MODELO": lbl_a_modelo, "ACC_PROD": lbl_a_prod, "ACC_FALTAN": lbl_a_faltan,
-                "SIGUIENTE_MODELO": lbl_siguiente
+                "SIGUIENTE_MODELO": lbl_siguiente,
+                "MONTAJE_ESTIMATIVO": lbl_m_estimativo
             }
 
     def on_resize(self, event):
@@ -323,6 +362,7 @@ class VentanaInfo(tk.Tk):
         new_data_font_size = max(8, int(11 * scale))
         new_lote_font_size = max(8, int(10 * scale))
         new_next_font_size = max(7, int(10 * scale))
+        new_estim_font_size = max(7, int(10 * scale))
 
         for seccion, elements in self.ui_elements.items():
             frame_widget = self.container.nametowidget(elements["MONTAJE_MODELO"].winfo_parent())
@@ -340,6 +380,7 @@ class VentanaInfo(tk.Tk):
             elements["ACC_PROD"].config(font=("Arial", new_data_font_size, "normal"))
             elements["ACC_FALTAN"].config(font=("Arial", new_data_font_size, "bold"))
             elements["SIGUIENTE_MODELO"].config(font=("Arial", new_next_font_size, "italic"))
+            elements["MONTAJE_ESTIMATIVO"].config(font=("Arial", new_estim_font_size, "italic"))
 
     def actualizar_textos_ui(self):
         for seccion, elements in self.ui_elements.items():
@@ -352,6 +393,9 @@ class VentanaInfo(tk.Tk):
                 elements["MONTAJE_PROD1"].config(text=f"Producidos (Est. 1): {datos['PROD1']}")
                 elements["MONTAJE_FALTAN1"].config(text=f"Faltan (Est. 1): {datos['FALTAN1']}")
                 
+                tiempo_restante = datos.get('TIEMPO_RESTANTE', '--:--')
+                elements["MONTAJE_ESTIMATIVO"].config(text=f"(Estim: {tiempo_restante})")
+
                 if "estacion_embalaje" in LINE_MAP.get(f"{seccion} - Montaje", {}):
                     elements["MONTAJE_PROD_EMB"].pack(anchor="w", pady=(5,0))
                     elements["MONTAJE_FALTAN_EMB"].pack(anchor="w")
@@ -374,10 +418,13 @@ class VentanaInfo(tk.Tk):
                 elements["ACC_FALTAN"].config(text=f"Faltan: {datos['FALTAN_ACC']}")
                 elements["SIGUIENTE_MODELO"].config(text=f"Siguiente: {datos['MODELO_SIGUIENTE']}")
             else:
-                for label in elements.values():
+                for label_key, label in elements.items():
                     if isinstance(label, ttk.Label):
-                        original_text = label.cget("text").split(':')[0]
-                        label.config(text=original_text + ": ---")
+                        if label_key == "MONTAJE_ESTIMATIVO":
+                           label.config(text="(Estim: --:--)")
+                        else:
+                            original_text = label.cget("text").split(':')[0]
+                            label.config(text=original_text + ": ---")
 
     def ciclo_de_actualizacion(self):
         while True:
