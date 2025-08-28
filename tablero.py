@@ -20,6 +20,9 @@ API_MES = "http://premes.newsan.com.ar"
 RUTA_EXCEL = r'\\ush-nt-3\v1\infprod\PLAN_PRO\Programas de producción x planta\Programa P5 - 2025.xlsx' #La r es para leer el String "raw"
 NOMBRES_HOJAS = ['LCD6', 'LCD8', 'CELDA 1', 'CELDA 2', 'CELDA 3'] #Nombres de las hojas en el Excel
 
+# Se define la ventana de tiempo para la media móvil en minutos.
+VENTANA_TIEMPO_MINUTOS = 60 
+
 LINE_MAP = {
     "LCD6 - Montaje":      { "id": 3, "estacion": "hermanado placa - pantalla", "estacion_embalaje": "Embalaje" },
     "LCD6 - Accesorios":   { "id": 14, "estacion": "puesto 1" },
@@ -47,7 +50,7 @@ def encontrar_todos_los_lotes(ruta_archivo, nombre_hoja):
             df.rename(columns={'Cant.': 'Cant'}, inplace=True) #Si encuentra la columa Cant. la renombra sin punto
 
         col_fecha = 'Fecha Ing. Produccion'
-        columnas_requeridas = [col_fecha, 'Modelo', 'Cant', 'Lote', 'PO']
+        columnas_requeridas = [col_fecha, 'Modelo', 'Cant', 'Lote', 'OP']
         
         if not all(col in df.columns for col in columnas_requeridas):
             logging.warning(f"La hoja '{nombre_hoja}' no tiene las columnas requeridas: {columnas_requeridas}")
@@ -114,25 +117,43 @@ def get_product_id(modelo, line_id): #Con el nombre del modelo y a qué línea p
 
 def get_produced_quantity(product_id, line_id, fecha_inicio, line_name, station_key_name): #Con el ID del producto, la línea y la fecha de inicio, devuelve la cantidad producida.
     if not TOKEN: return 0
+    # Esta función ahora obtiene la producción TOTAL del lote (desde su inicio hasta ahora)
+    hora_fin_obj = datetime.now()
+    hora_inicio_obj = datetime.strptime(fecha_inicio, '%d-%m-%Y').replace(hour=6, minute=0)
+    return get_produced_quantity_en_intervalo(product_id, line_id, hora_inicio_obj, hora_fin_obj, line_name, station_key_name)
+
+def get_produced_quantity_en_intervalo(product_id, line_id, start_time, end_time, line_name, station_key_name):
+    """
+    Función auxiliar para obtener la cantidad producida en un intervalo de tiempo específico.
+    """
+    if not TOKEN or not product_id: return 0
+    
     headers = {"X-XSRF-TOKEN": X_XSRF_TOKEN, "token": TOKEN}
-    fecha_fin = datetime.now().strftime("%d-%m-%Y %H:%M").replace(" ", "%20")
-    fecha_api = f"{fecha_inicio} 06:00".replace(' ', '%20')
-    url = f"{API_MES}/api/producedQuantities/GetReport/1/{fecha_api}/{fecha_fin}"
+    fecha_api_inicio = start_time.strftime("%d-%m-%Y %H:%M").replace(" ", "%20")
+    fecha_api_fin = end_time.strftime("%d-%m-%Y %H:%M").replace(" ", "%20")
+
+    url = f"{API_MES}/api/producedQuantities/GetReport/1/{fecha_api_inicio}/{fecha_api_fin}"
     params = {"productId": product_id, "lineId": line_id}
+    
     try:
         r = requests.get(url, headers=headers, params=params, timeout=10)
         if r.status_code == 200:
             data = r.json()
+            if not data or not data[0]: return 0
+
             estaciones_data = data[0][0]
             target_station_names_str = LINE_MAP.get(line_name, {}).get(station_key_name)
             if not target_station_names_str: return 0
+
             possible_names = [e.strip().lower() for e in target_station_names_str.split("ó")]
             for est_info in estaciones_data:
                 if est_info.get("stationGroupName", "").strip().lower() in possible_names:
                     return est_info.get("count", 0)
             return 0
         return 0
-    except (requests.exceptions.RequestException, json.JSONDecodeError, IndexError, TypeError): return 0
+    except (requests.exceptions.RequestException, json.JSONDecodeError, IndexError, TypeError) as e:
+        logging.error(f"Error en API call para intervalo: {e}")
+        return 0
 
 def obtener_datos_para_display():
     datos_finales_display = {}
@@ -207,7 +228,8 @@ def obtener_datos_para_display():
         prod_emb, prod_acc = 0, 0
         micro_lote_activo_info = {}
         tiempo_restante_str = "--:--"
-
+        tiempo_restante_acc_str = "--:--"
+        now = datetime.now()
 
         if line_id_m:
             product_id = get_product_id(modelo, line_id_m)
@@ -215,30 +237,23 @@ def obtener_datos_para_display():
                 if "estacion_embalaje" in LINE_MAP.get(linea_m, {}):
                     prod_emb = get_produced_quantity(product_id, line_id_m, fecha_inicio, linea_m, "estacion_embalaje")
                 
-                now = datetime.now()
-                # El turno comienza a las 6:00 AM.
-                start_of_day = now.replace(hour=6, minute=0, second=0, microsecond=0)
-                
-                # Solo se calcula si la hora actual es posterior al inicio del turno.
-                if now > start_of_day:
-                    fecha_hoy = now.strftime('%d-%m-%Y')
-                    # Se obtiene la cantidad producida específicamente en el día de hoy.
-                    producido_hoy = get_produced_quantity(product_id, line_id_m, fecha_hoy, linea_m, "estacion")
+                start_of_shift = now.replace(hour=6, minute=0, second=0, microsecond=0)
+                if now > start_of_shift:
+                    end_time_window = now
+                    start_time_window = now - timedelta(minutes=VENTANA_TIEMPO_MINUTOS)
+                    produccion_ventana = get_produced_quantity_en_intervalo(product_id, line_id_m, start_time_window, end_time_window, linea_m, "estacion")
                     
-                    if producido_hoy > 0:
+                    if produccion_ventana > 0:
                         faltan_total = plan - prod1_activo
                         if faltan_total > 0:
-                            # Se calcula el tiempo transcurrido desde el inicio del turno en segundos.
-                            segundos_transcurridos_hoy = (now - start_of_day).total_seconds()
-                            # Regla de tres simple para obtener el ritmo de producción (segundos por unidad).
-                            segundos_por_unidad = segundos_transcurridos_hoy / producido_hoy
-                            # Se estima el tiempo total restante en segundos.
+                            segundos_en_ventana = VENTANA_TIEMPO_MINUTOS * 60
+                            segundos_por_unidad = segundos_en_ventana / produccion_ventana
                             segundos_restantes = faltan_total * segundos_por_unidad
-                            
-                            # Se convierte el resultado a un formato HH:MM más legible.
                             horas = int(segundos_restantes // 3600)
                             minutos = int((segundos_restantes % 3600) // 60)
                             tiempo_restante_str = f"{horas:02d}:{minutos:02d}"
+                    else:
+                        tiempo_restante_str = "Detenido"
 
                 cantidad_acumulada = 0
                 for micro_lote in lote_activo["MICRO_LOTES"]:
@@ -252,9 +267,27 @@ def obtener_datos_para_display():
             product_id_acc = get_product_id(modelo, line_id_a)
             if product_id_acc:
                 fecha_inicio_obj = datetime.strptime(fecha_inicio, '%d-%m-%Y')
-                fecha_inicio_accesorios = (fecha_inicio_obj - timedelta(days=1)).strftime('%d-%m-%Y') #Para los accesorios buscamos un día antes porque suelen arrancar antes que montaje
-                
+                fecha_inicio_accesorios = (fecha_inicio_obj - timedelta(days=1)).strftime('%d-%m-%Y')
                 prod_acc = get_produced_quantity(product_id_acc, line_id_a, fecha_inicio_accesorios, linea_a, "estacion")
+
+                # Lógica de estimación para Accesorios
+                start_of_shift = now.replace(hour=6, minute=0, second=0, microsecond=0)
+                if now > start_of_shift:
+                    end_time_window = now
+                    start_time_window = now - timedelta(minutes=VENTANA_TIEMPO_MINUTOS)
+                    produccion_ventana_acc = get_produced_quantity_en_intervalo(product_id_acc, line_id_a, start_time_window, end_time_window, linea_a, "estacion")
+
+                    if produccion_ventana_acc > 0:
+                        faltan_total_acc = plan - prod_acc
+                        if faltan_total_acc > 0:
+                            segundos_en_ventana = VENTANA_TIEMPO_MINUTOS * 60
+                            segundos_por_unidad_acc = segundos_en_ventana / produccion_ventana_acc
+                            segundos_restantes_acc = faltan_total_acc * segundos_por_unidad_acc
+                            horas = int(segundos_restantes_acc // 3600)
+                            minutos = int((segundos_restantes_acc % 3600) // 60)
+                            tiempo_restante_acc_str = f"{horas:02d}:{minutos:02d}"
+                    else:
+                        tiempo_restante_acc_str = "Detenido"
         
         datos_finales_display[nombre_hoja] = {
             "MODELO": modelo, "PLAN": plan, "MODELO_SIGUIENTE": modelo_siguiente,
@@ -262,7 +295,8 @@ def obtener_datos_para_display():
             "PROD_EMB": prod_emb, "FALTAN_EMB": plan - prod_emb,
             "PROD_ACC": prod_acc, "FALTAN_ACC": plan - prod_acc,
             "MICRO_LOTE_INFO": micro_lote_activo_info,
-            "TIEMPO_RESTANTE": tiempo_restante_str 
+            "TIEMPO_RESTANTE": tiempo_restante_str,
+            "TIEMPO_RESTANTE_ACC": tiempo_restante_acc_str
         }
     return datos_finales_display
 
@@ -300,22 +334,19 @@ class VentanaInfo(tk.Tk):
             frame = tk.LabelFrame(self.container, text=seccion, font=("Arial", 14, "bold"), bg="#333333", fg="white", padx=10, pady=10)
             frame.grid(row=i//3, column=i%3, sticky="nsew", padx=5, pady=5)
             
+            # --- SECCIÓN MONTAJE ---
             lbl_m_modelo = ttk.Label(frame, text="Montaje: ---", font=("Arial", 12, "bold"), background="#333333", foreground="cyan")
             lbl_m_modelo.pack(anchor="w")
-            
-            ### NUEVO ### - Se crea un Frame para alinear 'Producidos' y 'Estimativo' en la misma línea.
-            prod_frame = tk.Frame(frame, bg="#333333")
-            prod_frame.pack(anchor="w", fill="x")
 
-            lbl_m_prod1 = ttk.Label(prod_frame, text="Producidos (Est. 1): ---", font=("Arial", 11, "normal"), background="#333333", foreground="white")
-            lbl_m_prod1.pack(side="left") # Se empaqueta a la izquierda del frame.
+            lbl_m_prod1 = ttk.Label(frame, text="Producidos (Est. 1): ---", font=("Arial", 11, "normal"), background="#333333", foreground="white")
+            lbl_m_prod1.pack(anchor="w")
 
-            ### NUEVO ### - Se crea el nuevo Label para mostrar el tiempo estimado.
-            lbl_m_estimativo = ttk.Label(prod_frame, text="(Estim: --:--)", font=("Arial", 10, "italic"), background="#333333", foreground="gray")
-            lbl_m_estimativo.pack(side="left", padx=(10, 0)) # Se empaqueta al lado, con un pequeño padding.
-            
-            lbl_m_faltan1 = ttk.Label(frame, text="Faltan (Est. 1): ---", font=("Arial", 11, "bold"), background="#333333", foreground="yellow")
-            lbl_m_faltan1.pack(anchor="w")
+            faltan1_frame = tk.Frame(frame, bg="#333333")
+            faltan1_frame.pack(anchor="w", fill="x")
+            lbl_m_faltan1 = ttk.Label(faltan1_frame, text="Faltan (Est. 1): ---", font=("Arial", 11, "bold"), background="#333333", foreground="yellow")
+            lbl_m_faltan1.pack(side="left")
+            lbl_m_estimativo = ttk.Label(faltan1_frame, text="(Estim: --:--)", font=("Arial", 10, "italic"), background="#333333", foreground="orange")
+            lbl_m_estimativo.pack(side="left", padx=(10, 0))
             
             lbl_m_prod_emb = ttk.Label(frame, font=("Arial", 11, "normal"), background="#333333", foreground="white")
             lbl_m_prod_emb.pack(anchor="w", pady=(5,0))
@@ -331,12 +362,18 @@ class VentanaInfo(tk.Tk):
             
             ttk.Separator(frame, orient='horizontal').pack(fill='x', pady=10)
             
+            # --- SECCIÓN ACCESORIOS ---
             lbl_a_modelo = ttk.Label(frame, text="Accesorios: ---", font=("Arial", 12, "bold"), background="#333333", foreground="cyan")
             lbl_a_modelo.pack(anchor="w")
             lbl_a_prod = ttk.Label(frame, text="Producidos: ---", font=("Arial", 11, "normal"), background="#333333", foreground="white")
             lbl_a_prod.pack(anchor="w")
-            lbl_a_faltan = ttk.Label(frame, text="Faltan: ---", font=("Arial", 11, "bold"), background="#333333", foreground="yellow")
-            lbl_a_faltan.pack(anchor="w")
+            
+            faltan_acc_frame = tk.Frame(frame, bg="#333333")
+            faltan_acc_frame.pack(anchor="w", fill="x")
+            lbl_a_faltan = ttk.Label(faltan_acc_frame, text="Faltan: ---", font=("Arial", 11, "bold"), background="#333333", foreground="yellow")
+            lbl_a_faltan.pack(side="left")
+            lbl_a_estimativo = ttk.Label(faltan_acc_frame, text="(Estim: --:--)", font=("Arial", 10, "italic"), background="#333333", foreground="orange")
+            lbl_a_estimativo.pack(side="left", padx=(10,0))
             
             ttk.Separator(frame, orient='horizontal').pack(fill='x', pady=10)
             
@@ -349,7 +386,8 @@ class VentanaInfo(tk.Tk):
                 "SEP_LOTE": sep_lote, "LOTE_OP": lbl_lote_op, "LOTE_FALTAN": lbl_lote_faltan,
                 "ACC_MODELO": lbl_a_modelo, "ACC_PROD": lbl_a_prod, "ACC_FALTAN": lbl_a_faltan,
                 "SIGUIENTE_MODELO": lbl_siguiente,
-                "MONTAJE_ESTIMATIVO": lbl_m_estimativo
+                "MONTAJE_ESTIMATIVO": lbl_m_estimativo,
+                "ACC_ESTIMATIVO": lbl_a_estimativo
             }
 
     def on_resize(self, event):
@@ -381,6 +419,7 @@ class VentanaInfo(tk.Tk):
             elements["ACC_FALTAN"].config(font=("Arial", new_data_font_size, "bold"))
             elements["SIGUIENTE_MODELO"].config(font=("Arial", new_next_font_size, "italic"))
             elements["MONTAJE_ESTIMATIVO"].config(font=("Arial", new_estim_font_size, "italic"))
+            elements["ACC_ESTIMATIVO"].config(font=("Arial", new_estim_font_size, "italic"))
 
     def actualizar_textos_ui(self):
         for seccion, elements in self.ui_elements.items():
@@ -389,12 +428,16 @@ class VentanaInfo(tk.Tk):
             datos = self.datos_display.get(seccion)
             
             if datos:
+                # Actualizar Montaje
                 elements["MONTAJE_MODELO"].config(text=f"Montaje: {datos['MODELO']}")
                 elements["MONTAJE_PROD1"].config(text=f"Producidos (Est. 1): {datos['PROD1']}")
                 elements["MONTAJE_FALTAN1"].config(text=f"Faltan (Est. 1): {datos['FALTAN1']}")
                 
                 tiempo_restante = datos.get('TIEMPO_RESTANTE', '--:--')
-                elements["MONTAJE_ESTIMATIVO"].config(text=f"(Estim: {tiempo_restante})")
+                color = "orange"
+                if tiempo_restante == "Detenido":
+                    color = "red"
+                elements["MONTAJE_ESTIMATIVO"].config(text=f"(Estim: {tiempo_restante})", foreground=color)
 
                 if "estacion_embalaje" in LINE_MAP.get(f"{seccion} - Montaje", {}):
                     elements["MONTAJE_PROD_EMB"].pack(anchor="w", pady=(5,0))
@@ -413,14 +456,22 @@ class VentanaInfo(tk.Tk):
                     elements["LOTE_OP"].config(text="Lote / OP: ---")
                     elements["LOTE_FALTAN"].config(text="Faltan del Lote: ---")
 
+                # Actualizar Accesorios
                 elements["ACC_MODELO"].config(text=f"Accesorios: {datos['MODELO']}")
                 elements["ACC_PROD"].config(text=f"Producidos: {datos['PROD_ACC']}")
                 elements["ACC_FALTAN"].config(text=f"Faltan: {datos['FALTAN_ACC']}")
+                
+                tiempo_restante_acc = datos.get('TIEMPO_RESTANTE_ACC', '--:--')
+                color_acc = "orange"
+                if tiempo_restante_acc == "Detenido":
+                    color_acc = "red"
+                elements["ACC_ESTIMATIVO"].config(text=f"(Estim: {tiempo_restante_acc})", foreground=color_acc)
+
                 elements["SIGUIENTE_MODELO"].config(text=f"Siguiente: {datos['MODELO_SIGUIENTE']}")
             else:
                 for label_key, label in elements.items():
                     if isinstance(label, ttk.Label):
-                        if label_key == "MONTAJE_ESTIMATIVO":
+                        if "ESTIMATIVO" in label_key:
                            label.config(text="(Estim: --:--)")
                         else:
                             original_text = label.cget("text").split(':')[0]
