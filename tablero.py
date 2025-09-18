@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [%
 
 
 # --- 1. CONFIGURACIÓN Y CONSTANTES GLOBALES ---
-API_MES = "http://premes.newsan.com.ar"
+API_MES = "http://mes.newsan.com.ar"
 RUTA_EXCEL = r'\\ush-nt-3\v1\infprod\PLAN_PRO\Programas de producción x planta\Programa P5 - 2025.xlsx' #La r es para leer el String "raw"
 NOMBRES_HOJAS = ['LCD6', 'LCD8', 'CELDA 1', 'CELDA 2', 'CELDA 3'] #Nombres de las hojas en el Excel
 
@@ -50,10 +50,11 @@ def encontrar_todos_los_lotes(ruta_archivo, nombre_hoja):
             df.rename(columns={'Cant.': 'Cant'}, inplace=True) #Si encuentra la columa Cant. la renombra sin punto
 
         col_fecha = 'Fecha Ing. Produccion'
-        columnas_requeridas = [col_fecha, 'Modelo', 'Cant', 'Lote', 'OP']
+        # Añadimos 'Ritmo' a las columnas que necesitamos
+        columnas_requeridas = [col_fecha, 'Modelo', 'Cant', 'Lote', 'OP', 'Ritmo']
         
         if not all(col in df.columns for col in columnas_requeridas):
-            logging.warning(f"La hoja '{nombre_hoja}' no tiene las columnas requeridas: {columnas_requeridas}")
+            logging.warning(f"La hoja '{nombre_hoja}' no tiene las columnas requeridas. Faltan: {[col for col in columnas_requeridas if col not in df.columns]}")
             return [] #Comprobamos que las columnas requeridas existen, si no, devolvemos una lista vacía.
             
         df[col_fecha] = pd.to_datetime(df[col_fecha], errors='coerce') #Convertimos la fecha a un formato de fecha
@@ -74,11 +75,15 @@ def encontrar_todos_los_lotes(ruta_archivo, nombre_hoja):
             lote_df = df.iloc[current_pos : end_pos + 1] #Creamos un DataFrame con las filas del lote actual
             micro_lotes = lote_df[['Lote', 'OP', 'Cant']].to_dict('records') #Lo convertimos a un diccionario de registros, cada registro es un micro lote con su Lote, OP y Cantidad.
 
+            # NUEVO: Obtenemos el ritmo para este lote (tomamos el primero)
+            ritmo_lote = int(lote_df['Ritmo'].fillna(0).clip(lower=0).iloc[0])
+
             macro_lotes.append({
                 "MODELO": modelo_actual,
                 "FECHA_INICIO": lote_df[col_fecha].min().strftime('%d-%m-%Y'), #nos quedamos la más antigua
                 "PRODUCCION_TOTAL": int(lote_df['Cant'].fillna(0).clip(lower=0).sum()), #fillna(0) remplaza celdas vacías por 0. Clip(lower=0) evita números negativos.
-                "MICRO_LOTES": micro_lotes
+                "MICRO_LOTES": micro_lotes,
+                "RITMO": ritmo_lote # <-- Guardamos el ritmo aquí
             })
             current_pos = end_pos + 1
         return macro_lotes
@@ -222,6 +227,7 @@ def obtener_datos_para_display():
         lote_activo = todos_los_lotes[indice_activo]
         modelo_siguiente = todos_los_lotes[indice_activo + 1]["MODELO"] if indice_activo + 1 < len(todos_los_lotes) else "---"
         modelo, plan, fecha_inicio = lote_activo["MODELO"], lote_activo["PRODUCCION_TOTAL"], lote_activo["FECHA_INICIO"]
+        ritmo_planificado = lote_activo.get("RITMO", 0) # Obtenemos el ritmo del lote activo
         
         linea_m, line_id_m = f"{nombre_hoja} - Montaje", LINE_MAP.get(f"{nombre_hoja} - Montaje", {}).get("id")
         linea_a, line_id_a = f"{nombre_hoja} - Accesorios", LINE_MAP.get(f"{nombre_hoja} - Accesorios", {}).get("id")
@@ -237,24 +243,45 @@ def obtener_datos_para_display():
                 if "estacion_embalaje" in LINE_MAP.get(linea_m, {}):
                     prod_emb = get_produced_quantity(product_id, line_id_m, fecha_inicio, linea_m, "estacion_embalaje")
                 
-                start_of_shift = now.replace(hour=6, minute=0, second=0, microsecond=0)
-                if now > start_of_shift:
-                    end_time_window = now
-                    start_time_window = now - timedelta(minutes=VENTANA_TIEMPO_MINUTOS)
-                    produccion_ventana = get_produced_quantity_en_intervalo(product_id, line_id_m, start_time_window, end_time_window, linea_m, "estacion")
-                    
-                    if produccion_ventana > 0:
-                        faltan_total = plan - prod1_activo
-                        if faltan_total > 0:
-                            segundos_en_ventana = VENTANA_TIEMPO_MINUTOS * 60
-                            segundos_por_unidad = segundos_en_ventana / produccion_ventana
-                            segundos_restantes = faltan_total * segundos_por_unidad
-                            horas = int(segundos_restantes // 3600)
-                            minutos = int((segundos_restantes % 3600) // 60)
-                            tiempo_restante_str = f"{horas:02d}:{minutos:02d}"
-                    else:
-                        tiempo_restante_str = "Detenido"
+                # Definimos los límites de la primera hora del turno
+                hora_inicio_turno = now.replace(hour=6, minute=0, second=0, microsecond=0)
+                hora_fin_especial = now.replace(hour=7, minute=0, second=0, microsecond=0)
 
+                # Condición: ¿Estamos en la primera hora del turno?
+                if hora_inicio_turno <= now < hora_fin_especial and ritmo_planificado > 0:
+                    logging.info(f"[{nombre_hoja}] Usando ritmo planificado ({ritmo_planificado}) para el estimado.")
+                    # --- Se divide el ritmo de 9hs para obtener el ritmo por hora ---
+                    ritmo_por_hora = ritmo_planificado / 9.0
+                    ritmo_ajustado = ritmo_por_hora * 1.10 # Aumentamos un 10%
+                    faltan_total = plan - prod1_activo
+                    if faltan_total > 0:
+                        segundos_por_unidad = 3600 / ritmo_ajustado
+                        segundos_restantes = faltan_total * segundos_por_unidad
+                        horas = int(segundos_restantes // 3600)
+                        minutos = int((segundos_restantes % 3600) // 60)
+                        tiempo_restante_str = f"{horas:02d}:{minutos:02d}"
+                    else:
+                        tiempo_restante_str = "00:00"
+                
+                # Lógica original para el resto del día
+                else:
+                    if now > hora_inicio_turno:
+                        end_time_window = now
+                        start_time_window = now - timedelta(minutes=VENTANA_TIEMPO_MINUTOS)
+                        produccion_ventana = get_produced_quantity_en_intervalo(product_id, line_id_m, start_time_window, end_time_window, linea_m, "estacion")
+                        
+                        if produccion_ventana > 0:
+                            faltan_total = plan - prod1_activo
+                            if faltan_total > 0:
+                                segundos_en_ventana = VENTANA_TIEMPO_MINUTOS * 60
+                                segundos_por_unidad = segundos_en_ventana / produccion_ventana
+                                segundos_restantes = faltan_total * segundos_por_unidad
+                                horas = int(segundos_restantes // 3600)
+                                minutos = int((segundos_restantes % 3600) // 60)
+                                tiempo_restante_str = f"{horas:02d}:{minutos:02d}"
+                        else:
+                            tiempo_restante_str = "Detenido"
+                
                 cantidad_acumulada = 0
                 for micro_lote in lote_activo["MICRO_LOTES"]:
                     cantidad_acumulada += int(micro_lote.get('Cant', 0) or 0)
@@ -270,24 +297,41 @@ def obtener_datos_para_display():
                 fecha_inicio_accesorios = (fecha_inicio_obj - timedelta(days=1)).strftime('%d-%m-%Y')
                 prod_acc = get_produced_quantity(product_id_acc, line_id_a, fecha_inicio_accesorios, linea_a, "estacion")
 
-                # Lógica de estimación para Accesorios
-                start_of_shift = now.replace(hour=6, minute=0, second=0, microsecond=0)
-                if now > start_of_shift:
-                    end_time_window = now
-                    start_time_window = now - timedelta(minutes=VENTANA_TIEMPO_MINUTOS)
-                    produccion_ventana_acc = get_produced_quantity_en_intervalo(product_id_acc, line_id_a, start_time_window, end_time_window, linea_a, "estacion")
+                hora_inicio_turno = now.replace(hour=6, minute=0, second=0, microsecond=0)
+                hora_fin_especial = now.replace(hour=7, minute=0, second=0, microsecond=0)
 
-                    if produccion_ventana_acc > 0:
-                        faltan_total_acc = plan - prod_acc
-                        if faltan_total_acc > 0:
-                            segundos_en_ventana = VENTANA_TIEMPO_MINUTOS * 60
-                            segundos_por_unidad_acc = segundos_en_ventana / produccion_ventana_acc
-                            segundos_restantes_acc = faltan_total_acc * segundos_por_unidad_acc
-                            horas = int(segundos_restantes_acc // 3600)
-                            minutos = int((segundos_restantes_acc % 3600) // 60)
-                            tiempo_restante_acc_str = f"{horas:02d}:{minutos:02d}"
+                if hora_inicio_turno <= now < hora_fin_especial and ritmo_planificado > 0:
+                    logging.info(f"[{nombre_hoja}-Acc] Usando ritmo planificado ({ritmo_planificado}) para el estimado.")
+                    # --- Se divide el ritmo de 9hs para obtener el ritmo por hora ---
+                    ritmo_por_hora = ritmo_planificado / 9.0
+                    ritmo_ajustado = ritmo_por_hora * 1.10
+                    faltan_total_acc = plan - prod_acc
+                    if faltan_total_acc > 0:
+                        segundos_por_unidad_acc = 3600 / ritmo_ajustado
+                        segundos_restantes_acc = faltan_total_acc * segundos_por_unidad_acc
+                        horas = int(segundos_restantes_acc // 3600)
+                        minutos = int((segundos_restantes_acc % 3600) // 60)
+                        tiempo_restante_acc_str = f"{horas:02d}:{minutos:02d}"
                     else:
-                        tiempo_restante_acc_str = "Detenido"
+                        tiempo_restante_acc_str = "00:00"
+
+                else:
+                    if now > hora_inicio_turno:
+                        end_time_window = now
+                        start_time_window = now - timedelta(minutes=VENTANA_TIEMPO_MINUTOS)
+                        produccion_ventana_acc = get_produced_quantity_en_intervalo(product_id_acc, line_id_a, start_time_window, end_time_window, linea_a, "estacion")
+
+                        if produccion_ventana_acc > 0:
+                            faltan_total_acc = plan - prod_acc
+                            if faltan_total_acc > 0:
+                                segundos_en_ventana = VENTANA_TIEMPO_MINUTOS * 60
+                                segundos_por_unidad_acc = segundos_en_ventana / produccion_ventana_acc
+                                segundos_restantes_acc = faltan_total_acc * segundos_por_unidad_acc
+                                horas = int(segundos_restantes_acc // 3600)
+                                minutos = int((segundos_restantes_acc % 3600) // 60)
+                                tiempo_restante_acc_str = f"{horas:02d}:{minutos:02d}"
+                        else:
+                            tiempo_restante_acc_str = "Detenido"
         
         datos_finales_display[nombre_hoja] = {
             "MODELO": modelo, "PLAN": plan, "MODELO_SIGUIENTE": modelo_siguiente,
