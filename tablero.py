@@ -69,7 +69,7 @@ def encontrar_todos_los_lotes(ruta_archivo, nombre_hoja):
         # Esto asegura que el plan de producción siempre está en orden cronológico.
         df.sort_values(by=col_fecha, inplace=True, kind='mergesort')
         df.reset_index(inplace=True, drop=True)
-        
+        #w
         macro_lotes = []
         current_pos = 0
         while current_pos < len(df):
