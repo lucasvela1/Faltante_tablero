@@ -8,6 +8,8 @@ import threading
 import time
 import logging
 import warnings
+import os
+from dotenv import load_dotenv
 
 # --- 0. CONFIGURACIÓN INICIAL ---
 # Oculta advertencias de openpyxl sobre el formato condicional no soportado
@@ -15,9 +17,13 @@ warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [%(funcName)s] %(message)s')
 
 
+
 # --- 1. CONFIGURACIÓN Y CONSTANTES GLOBALES ---
-API_MES = "http://mes.newsan.com.ar"
-RUTA_EXCEL = r'\\ush-nt-3\v1\infprod\PLAN_PRO\Programas de producción x planta\Programa P5 - 2025.xlsx' #La r es para leer el String "raw"
+API_MES = os.getenv("API_MES")
+RUTA_EXCEL = os.getenv("RUTA_EXCEL")
+USUARIO = os.getenv("USUARIO")
+CONTRASENA = os.getenv("CONTRASENA")
+
 NOMBRES_HOJAS = ['LCD6', 'LCD8', 'CELDA 1', 'CELDA 2', 'CELDA 3'] #Nombres de las hojas en el Excel
 
 # Se define la ventana de tiempo para la media móvil en minutos.
@@ -75,7 +81,7 @@ def encontrar_todos_los_lotes(ruta_archivo, nombre_hoja):
             lote_df = df.iloc[current_pos : end_pos + 1] #Creamos un DataFrame con las filas del lote actual
             micro_lotes = lote_df[['Lote', 'OP', 'Cant']].to_dict('records') #Lo convertimos a un diccionario de registros, cada registro es un micro lote con su Lote, OP y Cantidad.
 
-            # NUEVO: Obtenemos el ritmo para este lote (tomamos el primero)
+            # Obtenemos el ritmo para este lote (tomamos el primero)
             ritmo_lote = int(lote_df['Ritmo'].fillna(0).clip(lower=0).iloc[0])
 
             macro_lotes.append({
@@ -101,7 +107,7 @@ def login_jmmes():
         if not antiforgery_token or not xsrf_token: return False
         X_XSRF_TOKEN, COOKIE = xsrf_token, f".AspNetCore.Antiforgery.T8b4Fs--lAw={antiforgery_token}"
         headers = {"Content-Type": "application/json", "X-XSRF-TOKEN": xsrf_token, "Cookie": COOKIE}
-        payload = json.dumps({"name": "lvela", "password": "1997"})
+        payload = json.dumps({"name": USUARIO, "password": CONTRASENA})
         r = requests.post(f"{API_MES}/api/User/Authenticate", data=payload, headers=headers, timeout=10)
         r.raise_for_status()
         TOKEN = r.json().get("token", "")
@@ -530,7 +536,7 @@ class VentanaInfo(tk.Tk):
                 self.after(0, self.actualizar_textos_ui)
             except Exception as e:
                 logging.error(f"Error en el ciclo de actualización: {e}", exc_info=True)
-            time.sleep(30)
+            time.sleep(60)
 
     def actualizar_datos_en_hilo(self):
         thread = threading.Thread(target=self.ciclo_de_actualizacion, daemon=True)
