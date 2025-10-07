@@ -19,10 +19,10 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [%
 
 
 # --- 1. CONFIGURACIÓN Y CONSTANTES GLOBALES ---
-API_MES = os.getenv("API_MES")
-RUTA_EXCEL = os.getenv("RUTA_EXCEL")
-USUARIO = os.getenv("USUARIO")
-CONTRASENA = os.getenv("CONTRASENA")
+API_MES = "http://mes.newsan.com.ar"
+RUTA_EXCEL = r'\\ush-nt-3\v1\infprod\PLAN_PRO\Programas de producción x planta\Programa P5 - 2025.xlsx' #La r es para leer el String "raw"
+USUARIO = "lvela"
+CONTRASENA = "1997"
 
 NOMBRES_HOJAS = ['LCD6', 'LCD8', 'CELDA 1', 'CELDA 2', 'CELDA 3'] #Nombres de las hojas en el Excel
 
@@ -164,6 +164,69 @@ def get_produced_quantity_en_intervalo(product_id, line_id, start_time, end_time
         return 0
     except (requests.exceptions.RequestException, json.JSONDecodeError, IndexError, TypeError) as e:
         logging.error(f"Error en API call para intervalo: {e}")
+        return 0
+
+def get_produced_bases_quantity(product_id, line_id, start_time, end_time):
+    """
+    Obtiene la cantidad de bases producidas usando el endpoint GetPanelReport.
+    """
+    if not TOKEN or not product_id: return 0
+    
+    headers = {"X-XSRF-TOKEN": X_XSRF_TOKEN, "token": TOKEN}
+    fecha_api_inicio = start_time.strftime("%d-%m-%Y %H:%M").replace(" ", "%20")
+    fecha_api_fin = end_time.strftime("%d-%m-%Y %H:%M").replace(" ", "%20")
+
+    url = f"{API_MES}/api/producedQuantities/GetPanelReport/1/{fecha_api_inicio}/{fecha_api_fin}"
+    params = {
+        "productId": product_id, 
+        "lineId": line_id,
+        "isAllStationGroups": "false",
+        "isBaseCounting": "true"
+    }
+    
+    try:
+        r = requests.get(url, headers=headers, params=params, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        
+        # --- CORRECCIÓN AQUÍ ---
+        # La API devuelve 'quantity', no 'count' para este endpoint.
+        if isinstance(data, list) and data and isinstance(data[0], dict) and "quantity" in data[0]:
+            return data[0].get("quantity", 0)
+        else:
+            # Se mantiene el warning por si la respuesta cambia o viene vacía.
+            logging.warning(f"Respuesta inesperada o vacía de GetPanelReport para productId {product_id}: {data}")
+            return 0
+    except (requests.exceptions.RequestException, json.JSONDecodeError, IndexError, TypeError) as e:
+        logging.error(f"Error en API call para bases (GetPanelReport): {e}")
+        return 0
+
+def get_balanza_quantity(product_id, line_id, fecha_inicio):
+    """
+    Obtiene la cantidad producida en la estación específica 'Balanza'.
+    """
+    if not TOKEN or not product_id: return 0
+    headers = {"X-XSRF-TOKEN": X_XSRF_TOKEN, "token": TOKEN}
+    start_time = datetime.strptime(fecha_inicio, '%d-%m-%Y').replace(hour=6, minute=0)
+    end_time = datetime.now()
+    fecha_api_inicio = start_time.strftime("%d-%m-%Y %H:%M").replace(" ", "%20")
+    fecha_api_fin = end_time.strftime("%d-%m-%Y %H:%M").replace(" ", "%20")
+    url = f"{API_MES}/api/producedQuantities/GetReport/1/{fecha_api_inicio}/{fecha_api_fin}"
+    params = {"productId": product_id, "lineId": line_id}
+    
+    try:
+        r = requests.get(url, headers=headers, params=params, timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            if not data or not data[0] or not data[0][0]: return 0
+            estaciones_data = data[0][0]
+            for est_info in estaciones_data:
+                if est_info.get("stationGroupName", "").strip().lower() == "balanza":
+                    return est_info.get("count", 0)
+            return 0
+        return 0
+    except (requests.exceptions.RequestException, json.JSONDecodeError, IndexError, TypeError) as e:
+        logging.error(f"Error en API call para obtener cantidad de Balanza: {e}")
         return 0
 
 def obtener_datos_para_display():
@@ -339,6 +402,39 @@ def obtener_datos_para_display():
                         else:
                             tiempo_restante_acc_str = "Detenido"
         
+        # --- LÓGICA PARA STOCK DE BASES (SOLO LCD6) ---
+        stock_l, stock_r = "N/A", "N/A"
+        if nombre_hoja == "LCD6":
+            logging.info(f"Calculando stock de bases para LCD6, modelo {modelo}...")
+            line_id_bases = 102
+            
+            modelo_base_l = f"{modelo} Base L"
+            modelo_base_r = f"{modelo} Base R"
+
+            product_id_base_l = get_product_id(modelo_base_l, line_id_bases)
+            product_id_base_r = get_product_id(modelo_base_r, line_id_bases)
+
+            if product_id_base_l and product_id_base_r:
+                hora_inicio_lote = datetime.strptime(fecha_inicio, '%d-%m-%Y').replace(hour=6, minute=0)
+                
+                producidas_base_l = get_produced_bases_quantity(product_id_base_l, line_id_bases, hora_inicio_lote, now)
+                producidas_base_r = get_produced_bases_quantity(product_id_base_r, line_id_bases, hora_inicio_lote, now)
+                
+                product_id_acc = get_product_id(modelo, line_id_a)
+                if product_id_acc:
+                    fecha_inicio_obj = datetime.strptime(fecha_inicio, '%d-%m-%Y')
+                    fecha_inicio_accesorios = (fecha_inicio_obj - timedelta(days=1)).strftime('%d-%m-%Y')
+                    consumido_balanza = get_balanza_quantity(product_id_acc, line_id_a, fecha_inicio_accesorios)
+                    
+                    stock_l = producidas_base_l - consumido_balanza
+                    stock_r = producidas_base_r - consumido_balanza
+                    logging.info(f"Stock L: {producidas_base_l} - {consumido_balanza} = {stock_l}")
+                    logging.info(f"Stock R: {producidas_base_r} - {consumido_balanza} = {stock_r}")
+                else:
+                    logging.warning(f"No se pudo obtener product_id de accesorios para {modelo} en línea {line_id_a} para calcular consumo de bases.")
+            else:
+                logging.warning(f"No se encontraron IDs para las bases del modelo {modelo}.")
+
         datos_finales_display[nombre_hoja] = {
             "MODELO": modelo, "PLAN": plan, "MODELO_SIGUIENTE": modelo_siguiente,
             "PROD1": prod1_activo, "FALTAN1": plan - prod1_activo,
@@ -346,7 +442,9 @@ def obtener_datos_para_display():
             "PROD_ACC": prod_acc, "FALTAN_ACC": plan - prod_acc,
             "MICRO_LOTE_INFO": micro_lote_activo_info,
             "TIEMPO_RESTANTE": tiempo_restante_str,
-            "TIEMPO_RESTANTE_ACC": tiempo_restante_acc_str
+            "TIEMPO_RESTANTE_ACC": tiempo_restante_acc_str,
+            "STOCK_L": stock_l,
+            "STOCK_R": stock_r
         }
     return datos_finales_display
 
@@ -425,6 +523,16 @@ class VentanaInfo(tk.Tk):
             lbl_a_estimativo = ttk.Label(faltan_acc_frame, text="(Estim: --:--)", font=("Arial", 10, "italic"), background="#333333", foreground="orange")
             lbl_a_estimativo.pack(side="left", padx=(10,0))
             
+            # --- SECCIÓN STOCK DE BASES (SOLO PARA LCD6) ---
+            lbl_stock_r, lbl_stock_l = None, None
+            if seccion == "LCD6":
+                stock_frame = tk.Frame(frame, bg="#333333")
+                stock_frame.pack(anchor="w", fill="x", pady=(5,0))
+                lbl_stock_r = ttk.Label(stock_frame, text="Stock R: ---", font=("Arial", 9, "italic"), background="#333333", foreground="#90EE90")
+                lbl_stock_r.pack(side="left")
+                lbl_stock_l = ttk.Label(stock_frame, text="Stock L: ---", font=("Arial", 9, "italic"), background="#333333", foreground="#90EE90")
+                lbl_stock_l.pack(side="left", padx=(15, 0))
+
             ttk.Separator(frame, orient='horizontal').pack(fill='x', pady=10)
             
             lbl_siguiente = ttk.Label(frame, text="Siguiente: ---", font=("Arial", 10, "italic"), background="#333333", foreground="#cccccc")
@@ -439,6 +547,10 @@ class VentanaInfo(tk.Tk):
                 "MONTAJE_ESTIMATIVO": lbl_m_estimativo,
                 "ACC_ESTIMATIVO": lbl_a_estimativo
             }
+            if lbl_stock_r and lbl_stock_l:
+                self.ui_elements[seccion]["STOCK_R"] = lbl_stock_r
+                self.ui_elements[seccion]["STOCK_L"] = lbl_stock_l
+
 
     def on_resize(self, event):
         if not hasattr(self, 'initial_width') or not self.ui_elements:
@@ -451,6 +563,8 @@ class VentanaInfo(tk.Tk):
         new_lote_font_size = max(8, int(10 * scale))
         new_next_font_size = max(7, int(10 * scale))
         new_estim_font_size = max(7, int(10 * scale))
+        new_stock_font_size = max(7, int(9 * scale))
+
 
         for seccion, elements in self.ui_elements.items():
             frame_widget = self.container.nametowidget(elements["MONTAJE_MODELO"].winfo_parent())
@@ -470,6 +584,9 @@ class VentanaInfo(tk.Tk):
             elements["SIGUIENTE_MODELO"].config(font=("Arial", new_next_font_size, "italic"))
             elements["MONTAJE_ESTIMATIVO"].config(font=("Arial", new_estim_font_size, "italic"))
             elements["ACC_ESTIMATIVO"].config(font=("Arial", new_estim_font_size, "italic"))
+            if "STOCK_R" in elements:
+                elements["STOCK_R"].config(font=("Arial", new_stock_font_size, "italic"))
+                elements["STOCK_L"].config(font=("Arial", new_stock_font_size, "italic"))
 
     def actualizar_textos_ui(self):
         for seccion, elements in self.ui_elements.items():
@@ -517,12 +634,22 @@ class VentanaInfo(tk.Tk):
                     color_acc = "red"
                 elements["ACC_ESTIMATIVO"].config(text=f"(Estim: {tiempo_restante_acc})", foreground=color_acc)
 
+                # Actualizar Stock de Bases si existen los elementos
+                if "STOCK_R" in elements:
+                    stock_r = datos.get("STOCK_R", "---")
+                    stock_l = datos.get("STOCK_L", "---")
+                    elements["STOCK_R"].config(text=f"Stock R: {stock_r}")
+                    elements["STOCK_L"].config(text=f"Stock L: {stock_l}")
+
                 elements["SIGUIENTE_MODELO"].config(text=f"Siguiente: {datos['MODELO_SIGUIENTE']}")
             else:
                 for label_key, label in elements.items():
                     if isinstance(label, ttk.Label):
                         if "ESTIMATIVO" in label_key:
-                           label.config(text="(Estim: --:--)")
+                            label.config(text="(Estim: --:--)")
+                        elif "STOCK" in label_key:
+                             original_text = label.cget("text").split(':')[0]
+                             label.config(text=original_text + ": ---")
                         else:
                             original_text = label.cget("text").split(':')[0]
                             label.config(text=original_text + ": ---")
