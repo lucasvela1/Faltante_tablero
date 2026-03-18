@@ -11,10 +11,25 @@ import warnings
 import os
 from dotenv import load_dotenv
 
+# Cargar variables de entorno
+load_dotenv()
+
 # --- 0. CONFIGURACIÓN INICIAL ---
 # Oculta advertencias de openpyxl sobre el formato condicional no soportado
 warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [%(funcName)s] %(message)s')
+
+# Importar mock data si está en modo demo
+DEMO_MODE = os.getenv("DEMO_MODE", "false").lower() == "true"
+if DEMO_MODE:
+    from mock_data import (
+        mock_login_jmmes,
+        mock_get_product_id,
+        mock_get_produced_quantity,
+        mock_get_produced_quantity_en_intervalo,
+        info_modo_demo
+    )
+    info_modo_demo()
 
 
 
@@ -48,6 +63,32 @@ X_XSRF_TOKEN, TOKEN, COOKIE = "", "", ""
 # --- 2. FUNCIONES DE LÓGICA (EXCEL + API) ---
 
 def encontrar_todos_los_lotes(ruta_archivo, nombre_hoja):
+    if DEMO_MODE:
+        # Generamos lotes mock basados en la hoja para que el tablero muestre datos.
+        hoy = datetime.now().strftime('%d-%m-%Y')
+        modelos_por_hoja = {
+            "LCD6": ["LCD6-4K", "LCD6-2K"],
+            "LCD8": ["LCD8-4K", "LCD8-8K"],
+            "CELDA 1": ["CELDA1-STD"],
+            "CELDA 2": ["CELDA2-PRO"],
+            "CELDA 3": ["CELDA3-PRO"],
+        }
+        ritmo_default = 20
+        macro_lotes = []
+        for modelo in modelos_por_hoja.get(nombre_hoja, ["MODELO-TEST"]):
+            micro_lotes = [
+                {"Lote": f"{modelo}-L001", "OP": "OP-1001", "Cant": 80},
+                {"Lote": f"{modelo}-L002", "OP": "OP-1002", "Cant": 60},
+            ]
+            macro_lotes.append({
+                "MODELO": modelo,
+                "FECHA_INICIO": hoy,
+                "PRODUCCION_TOTAL": sum(m['Cant'] for m in micro_lotes),
+                "MICRO_LOTES": micro_lotes,
+                "RITMO": ritmo_default,
+            })
+        return macro_lotes
+
     try:
         df = pd.read_excel(ruta_archivo, sheet_name=nombre_hoja, header=14) #Con pandas leemos el Excel, la cabecera empieza en la fila 14, y busca el archivo en la dirección que le pasamos
         df.columns = df.columns.str.replace(r'\s+', ' ', regex=True).str.strip() #Normalizamos, esto elimina dobles espacios y espacios al principio o final de los nombres de columnas.
@@ -89,7 +130,7 @@ def encontrar_todos_los_lotes(ruta_archivo, nombre_hoja):
                 "FECHA_INICIO": lote_df[col_fecha].min().strftime('%d-%m-%Y'), #nos quedamos la más antigua
                 "PRODUCCION_TOTAL": int(lote_df['Cant'].fillna(0).clip(lower=0).sum()), #fillna(0) remplaza celdas vacías por 0. Clip(lower=0) evita números negativos.
                 "MICRO_LOTES": micro_lotes,
-                "RITMO": ritmo_lote # <-- Guardamos el ritmo aquí
+                "RITMO": ritmo_lote # 
             })
             current_pos = end_pos + 1
         return macro_lotes
@@ -99,6 +140,12 @@ def encontrar_todos_los_lotes(ruta_archivo, nombre_hoja):
 
 def login_jmmes():
     global X_XSRF_TOKEN, TOKEN, COOKIE
+    
+    if DEMO_MODE:
+        mock_login_jmmes()
+        X_XSRF_TOKEN, TOKEN, COOKIE = "demo_token", "demo_token", "demo_cookie"
+        return True
+    
     try:
         get_token = requests.get(f"{API_MES}/api/XsrfToken", timeout=10)
         get_token.raise_for_status()
@@ -117,6 +164,9 @@ def login_jmmes():
         return False
 
 def get_product_id(modelo, line_id): #Con el nombre del modelo y a qué línea pertenece, devuelve el ID del producto.
+    if DEMO_MODE:
+        return mock_get_product_id(modelo, line_id)
+    
     if not TOKEN: return None
     url = f"{API_MES}/api/Products/GetByNameAndLineId/{modelo}/{line_id}"
     headers = {"X-XSRF-TOKEN": X_XSRF_TOKEN, "token": TOKEN}
@@ -127,6 +177,9 @@ def get_product_id(modelo, line_id): #Con el nombre del modelo y a qué línea p
     except requests.exceptions.RequestException: return None
 
 def get_produced_quantity(product_id, line_id, fecha_inicio, line_name, station_key_name): #Con el ID del producto, la línea y la fecha de inicio, devuelve la cantidad producida.
+    if DEMO_MODE:
+        return mock_get_produced_quantity(product_id, line_id, fecha_inicio, line_name, station_key_name)
+    
     if not TOKEN: return 0
     # Esta función ahora obtiene la producción TOTAL del lote (desde su inicio hasta ahora)
     hora_fin_obj = datetime.now()
@@ -137,6 +190,9 @@ def get_produced_quantity_en_intervalo(product_id, line_id, start_time, end_time
     """
     Función auxiliar para obtener la cantidad producida en un intervalo de tiempo específico.
     """
+    if DEMO_MODE:
+        return mock_get_produced_quantity_en_intervalo(product_id, line_id, start_time, end_time, line_name, station_key_name)
+    
     if not TOKEN or not product_id: return 0
     
     headers = {"X-XSRF-TOKEN": X_XSRF_TOKEN, "token": TOKEN}
